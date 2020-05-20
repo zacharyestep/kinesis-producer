@@ -27,6 +27,10 @@ type Putter interface {
 	PutRecords(*k.PutRecordsInput) (*k.PutRecordsOutput, error)
 }
 
+type GetShardsFunc func() ([]*k.Shard, error)
+
+func defaultGetShardsFunc() ([]*k.Shard, error) { return nil, nil }
+
 // Config is the Producer configuration.
 type Config struct {
 	// StreamName is the Kinesis stream.
@@ -34,6 +38,16 @@ type Config struct {
 
 	// FlushInterval is a regular interval for flushing the buffer. Defaults to 5s.
 	FlushInterval time.Duration
+
+	// ShardRefreshInterval is a regular interval for refreshing the ShardMap.
+	// Config.GetShards will be called at this interval. A value of 0 means no refresh
+	// occurs. Default is 0
+	ShardRefreshInterval time.Duration
+
+	// GetShards is called on NewProducer to initialze the ShardMap.
+	// If ShardRefreshInterval is non-zero, GetShards will be called at that interval.
+	// Defaults to a static list of 500 shards.
+	GetShards GetShardsFunc
 
 	// BatchCount determine the maximum number of items to pack in batch.
 	// Must not exceed length. Defaults to 500.
@@ -54,6 +68,8 @@ type Config struct {
 	BacklogCount int
 
 	// Number of requests to sent concurrently. Default to 24.
+	// If you are using the ListShards API in your GetShards function, those connections
+	// will not be counted in MaxConnections.
 	MaxConnections int
 
 	// Logger is the logger used. Default to producer.Logger.
@@ -89,7 +105,7 @@ func (c *Config) defaults() {
 	if c.AggregateBatchSize == 0 {
 		c.AggregateBatchSize = defaultAggregationSize
 	}
-	falseOrPanic(c.AggregateBatchSize > maxAggregationSize, "kinesis: AggregateBatchSize exceeds 50KB")
+	falseOrPanic(c.AggregateBatchSize > maxAggregationSize, "kinesis: AggregateBatchSize exceeds 1MiB")
 	if c.MaxConnections == 0 {
 		c.MaxConnections = defaultMaxConnections
 	}
@@ -98,6 +114,9 @@ func (c *Config) defaults() {
 		c.FlushInterval = defaultFlushInterval
 	}
 	falseOrPanic(len(c.StreamName) == 0, "kinesis: StreamName length must be at least 1")
+	if c.GetShards == nil {
+		c.GetShards = defaultGetShardsFunc
+	}
 }
 
 func falseOrPanic(p bool, msg string) {
