@@ -26,7 +26,7 @@ func ExampleSimple() {
 	go func() {
 		for r := range pr.NotifyFailures() {
 			// r contains `Data`, `PartitionKey` and `Error()`
-			logger.Error("detected put failure", r.error)
+			logger.Error("detected put failure", r.Err)
 		}
 	}()
 
