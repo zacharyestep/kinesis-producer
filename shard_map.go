@@ -24,8 +24,9 @@ type ShardLister interface {
 	ListShards(input *k.ListShardsInput) (*k.ListShardsOutput, error)
 }
 
+// GetKinesisShardsFunc gets the active list of shards from Kinesis.ListShards API
 func GetKinesisShardsFunc(client ShardLister, streamName string) GetShardsFunc {
-	return func() ([]*k.Shard, error) {
+	return func(old []*k.Shard) ([]*k.Shard, bool, error) {
 		var (
 			shards []*k.Shard
 			next   *string
@@ -41,7 +42,7 @@ func GetKinesisShardsFunc(client ShardLister, streamName string) GetShardsFunc {
 
 			resp, err := client.ListShards(input)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 
 			for _, shard := range resp.Shards {
@@ -55,10 +56,30 @@ func GetKinesisShardsFunc(client ShardLister, streamName string) GetShardsFunc {
 
 			next = resp.NextToken
 			if next == nil {
-				return shards, nil
+				break
 			}
 		}
+
+		if shardsEqual(old, shards) {
+			return nil, false, nil
+		}
+		return shards, true, nil
 	}
+}
+
+// Checks to see if the shards have the same hash key ranges
+func shardsEqual(a, b []*k.Shard) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, ashard := range a {
+		bshard := b[i]
+		if *ashard.HashKeyRange.StartingHashKey != *bshard.HashKeyRange.StartingHashKey ||
+			*ashard.HashKeyRange.EndingHashKey != *bshard.HashKeyRange.EndingHashKey {
+			return false
+		}
+	}
+	return true
 }
 
 type ShardMap struct {
@@ -87,9 +108,9 @@ func NewShardMap(shards []*k.Shard, aggregateBatchCount int) *ShardMap {
 // StaticGetShardsFunc returns a GetShardsFunc that when called, will generate a static
 // list of shards with length count whos HashKeyRanges are evenly distributed
 func StaticGetShardsFunc(count int) GetShardsFunc {
-	return func() ([]*k.Shard, error) {
+	return func(old []*k.Shard) ([]*k.Shard, bool, error) {
 		if count == 0 {
-			return nil, nil
+			return nil, false, nil
 		}
 
 		step := big.NewInt(int64(0))
@@ -118,7 +139,7 @@ func StaticGetShardsFunc(count int) GetShardsFunc {
 			shard = shard.SetHashKeyRange(hkRange)
 			shards[i] = shard
 		}
-		return shards, nil
+		return shards, false, nil
 	}
 }
 
@@ -174,7 +195,19 @@ func (m *ShardMap) Drain() ([]*AggregatedRecordRequest, []error) {
 // 			 records to the new shards, once we do update our mapping, user records may end up
 // 			 in a new shard and we would lose the shard ordering. Shard merging should not be
 // 			 an issue since records from both shards should fall into the merged hash key range
-func (m *ShardMap) UpdateShards(shards []*k.Shard) ([]*AggregatedRecordRequest, error) {
+func (m *ShardMap) UpdateShards(getShards GetShardsFunc) ([]*AggregatedRecordRequest, error) {
+	m.RLock()
+	old := m.shards
+	m.RUnlock()
+
+	shards, updated, err := getShards(old)
+	if err != nil {
+		return nil, err
+	}
+	if !updated {
+		return nil, nil
+	}
+
 	m.Lock()
 	update := NewShardMap(shards, m.AggregateBatchCount)
 	var drained []*AggregatedRecordRequest

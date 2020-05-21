@@ -50,7 +50,7 @@ func New(config *Config) *Producer {
 		records:   make(chan *AggregatedRecordRequest, config.BacklogCount),
 		semaphore: make(chan struct{}, config.MaxConnections),
 	}
-	shards, err := p.GetShards()
+	shards, _, err := p.GetShards(nil)
 	if err != nil {
 		// TODO: maybe just log and continue or fallback to default? if ShardRefreshInterval
 		// 			 is set, it may succeed a later time
@@ -233,12 +233,7 @@ func (p *Producer) loop() {
 				flush("interval")
 			}
 		case <-shardTickC:
-			shards, err := p.GetShards()
-			if err != nil {
-				p.Logger.Error("GetShards error", err)
-				continue
-			}
-			records, err := p.shardMap.UpdateShards(shards)
+			records, err := p.shardMap.UpdateShards(p.GetShards)
 			if err != nil {
 				p.Logger.Error("UpdateShards error", err)
 				continue

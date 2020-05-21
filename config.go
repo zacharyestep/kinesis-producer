@@ -27,9 +27,14 @@ type Putter interface {
 	PutRecords(*k.PutRecordsInput) (*k.PutRecordsOutput, error)
 }
 
-type GetShardsFunc func() ([]*k.Shard, error)
+// GetShardsFunc is called to populate the shard map on initialization and during refresh
+// shard interval. GetShardsFunc  will be called with the current shard list. During
+// initialization, this will be nil. GetShardsFunc should return a shard list, a bool
+// indicating if the shards should be updated and an error. If false bool or error is
+// returned, shards will not be updated.
+type GetShardsFunc func(old []*k.Shard) ([]*k.Shard, bool, error)
 
-func defaultGetShardsFunc() ([]*k.Shard, error) { return nil, nil }
+func defaultGetShardsFunc(old []*k.Shard) ([]*k.Shard, bool, error) { return nil, false, nil }
 
 // Config is the Producer configuration.
 type Config struct {
