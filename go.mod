@@ -1,4 +1,4 @@
-module github.com/a8m/kinesis-producer
+module github.com/mjneil/kinesis-producer
 
 require (
 	github.com/aws/aws-sdk-go v1.21.10
@@ -11,3 +11,5 @@ require (
 	go.uber.org/zap v1.10.0
 	golang.org/x/net v0.0.0-20190724013045-ca1201d0de80 // indirect
 )
+
+go 1.13
