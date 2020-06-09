@@ -10,16 +10,22 @@ import (
 	k "github.com/aws/aws-sdk-go/service/kinesis"
 )
 
-// 2^128
+// 2^128 exclusive upper bound
 // Hash key ranges are 0 indexed, so true max is 2^128 - 1
-const maxHashKeyRange = "340282366920938463463374607431768211456"
+const maxHashKeyRange = "340282366920938463463374607431768211455"
 
-type ShardBucketError string
-
-func (s ShardBucketError) Error() string {
-	return fmt.Sprintf("Partition Key outside shard key range: %s", string(s))
+type ShardBucketError struct {
+	UserRecord
 }
 
+func (s *ShardBucketError) Error() string {
+	if hk := s.ExplicitHashKey(); hk != nil {
+		return fmt.Sprintf("ExplicitHashKey outside shard key range: %s", hk.String())
+	}
+	return fmt.Sprintf("PartitionKey outside shard key range: %s", s.PartitionKey())
+}
+
+// ShardLister is the interface that wraps the KinesisAPI.ListShards method.
 type ShardLister interface {
 	ListShards(input *k.ListShardsInput) (*k.ListShardsOutput, error)
 }
@@ -67,44 +73,6 @@ func GetKinesisShardsFunc(client ShardLister, streamName string) GetShardsFunc {
 	}
 }
 
-// Checks to see if the shards have the same hash key ranges
-func shardsEqual(a, b []*k.Shard) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i, ashard := range a {
-		bshard := b[i]
-		if *ashard.HashKeyRange.StartingHashKey != *bshard.HashKeyRange.StartingHashKey ||
-			*ashard.HashKeyRange.EndingHashKey != *bshard.HashKeyRange.EndingHashKey {
-			return false
-		}
-	}
-	return true
-}
-
-type ShardMap struct {
-	sync.RWMutex
-	shards      []*k.Shard
-	aggregators []*Aggregator
-	// AggregateBatchCount determine the maximum number of items to pack into an aggregated record.
-	AggregateBatchCount int
-}
-
-// NewShardMap initializes an aggregator for each shard.
-// UserRecords that map to the same shard based on MD5 hash of their partition
-// key (Same method used by Kinesis) will be aggregated together. Aggregators will use an
-// ExplicitHashKey from their assigned shards when creating kinesis.PutRecordsRequestEntry.
-// A ShardMap with an empty shards slice will return to unsharded behavior with a single
-// aggregator. The aggregator will instead use the PartitionKey of the first UserRecord and
-// no ExplicitHashKey.
-func NewShardMap(shards []*k.Shard, aggregateBatchCount int) *ShardMap {
-	return &ShardMap{
-		shards:              shards,
-		aggregators:         makeAggregators(shards),
-		AggregateBatchCount: aggregateBatchCount,
-	}
-}
-
 // StaticGetShardsFunc returns a GetShardsFunc that when called, will generate a static
 // list of shards with length count whos HashKeyRanges are evenly distributed
 func StaticGetShardsFunc(count int) GetShardsFunc {
@@ -139,7 +107,47 @@ func StaticGetShardsFunc(count int) GetShardsFunc {
 			shard = shard.SetHashKeyRange(hkRange)
 			shards[i] = shard
 		}
+		// Set last shard end range to max to account for small rounding errors
+		shards[len(shards)-1].HashKeyRange.SetEndingHashKey(maxHashKeyRange)
 		return shards, false, nil
+	}
+}
+
+// Checks to see if the shards have the same hash key ranges
+func shardsEqual(a, b []*k.Shard) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, ashard := range a {
+		bshard := b[i]
+		if *ashard.HashKeyRange.StartingHashKey != *bshard.HashKeyRange.StartingHashKey ||
+			*ashard.HashKeyRange.EndingHashKey != *bshard.HashKeyRange.EndingHashKey {
+			return false
+		}
+	}
+	return true
+}
+
+type ShardMap struct {
+	sync.RWMutex
+	shards      []*k.Shard
+	aggregators []*Aggregator
+	// aggregateBatchCount determine the maximum number of items to pack into an aggregated record.
+	aggregateBatchCount int
+}
+
+// NewShardMap initializes an aggregator for each shard.
+// UserRecords that map to the same shard based on MD5 hash of their partition
+// key (Same method used by Kinesis) will be aggregated together. Aggregators will use an
+// ExplicitHashKey from their assigned shards when creating kinesis.PutRecordsRequestEntry.
+// A ShardMap with an empty shards slice will return to unsharded behavior with a single
+// aggregator. The aggregator will instead use the PartitionKey of the first UserRecord and
+// no ExplicitHashKey.
+func NewShardMap(shards []*k.Shard, aggregateBatchCount int) *ShardMap {
+	return &ShardMap{
+		shards:              shards,
+		aggregators:         makeAggregators(shards),
+		aggregateBatchCount: aggregateBatchCount,
 	}
 }
 
@@ -194,12 +202,14 @@ func (m *ShardMap) Drain() ([]*AggregatedRecordRequest, []error) {
 // TODO: How to handle shard splitting? If a shard splits but we don't remap before sending
 // 			 records to the new shards, once we do update our mapping, user records may end up
 // 			 in a new shard and we would lose the shard ordering. Shard merging should not be
-// 			 an issue since records from both shards should fall into the merged hash key range
+// 			 an issue since records from both shards should fall into the merged hash key range.
 func (m *ShardMap) UpdateShards(getShards GetShardsFunc) ([]*AggregatedRecordRequest, error) {
 	m.RLock()
 	old := m.shards
 	m.RUnlock()
 
+	// Possible race condition if UpdateShards is called concurrently
+	// but should not be concern since Producer has single go routine for updating shards
 	shards, updated, err := getShards(old)
 	if err != nil {
 		return nil, err
@@ -209,7 +219,7 @@ func (m *ShardMap) UpdateShards(getShards GetShardsFunc) ([]*AggregatedRecordReq
 	}
 
 	m.Lock()
-	update := NewShardMap(shards, m.AggregateBatchCount)
+	update := NewShardMap(shards, m.aggregateBatchCount)
 	var drained []*AggregatedRecordRequest
 	for _, agg := range m.aggregators {
 		// We don't need to get the aggregator lock because we have the shard map write lock
@@ -234,25 +244,26 @@ func (m *ShardMap) UpdateShards(getShards GetShardsFunc) ([]*AggregatedRecordReq
 // puts a UserRecord into the aggregator that maps to its partition key.
 // Not thread safe. acquire lock before calling.
 func (m *ShardMap) put(userRecord UserRecord) (*AggregatedRecordRequest, error) {
-	partitionKey := userRecord.PartitionKey()
-	bucket := m.bucket(partitionKey)
+	bucket := m.bucket(userRecord)
 	if bucket == -1 {
-		return nil, ShardBucketError(partitionKey)
+		return nil, userRecord.(*ShardBucketError)
 	}
 	a := m.aggregators[bucket]
 	a.Lock()
-	nbytes := userRecord.Size() + len([]byte(userRecord.PartitionKey()))
-	needToDrain := nbytes+a.Size()+md5.Size+len(magicNumber)+partitionKeyIndexSize > maxRecordSize || a.Count() >= m.AggregateBatchCount
 	var (
-		req *AggregatedRecordRequest
-		err error
+		// nbytes       = userRecord.Size() + len([]byte(userRecord.PartitionKey()))
+		// sizeAfterPut = nbytes + a.Size() + md5.Size + len(magicNumber) + partitionKeyIndexSize
+		needToDrain = a.WillOverflow(userRecord) || a.Count() >= m.aggregateBatchCount
+
+		drained *AggregatedRecordRequest
+		err     error
 	)
 	if needToDrain {
-		req, err = a.Drain()
+		drained, err = a.Drain()
 	}
 	a.Put(userRecord)
 	a.Unlock()
-	return req, err
+	return drained, err
 }
 
 // bucket returns the index of the shard the given partition key maps to.
@@ -262,12 +273,15 @@ func (m *ShardMap) put(userRecord UserRecord) (*AggregatedRecordRequest, error) 
 // in the shard with the larger starting HashKeyRange
 // Not thread safe. acquire lock before calling.
 // TODO: Can we optimize this? Cache for pk -> bucket?
-func (m *ShardMap) bucket(partitionKey string) int {
+func (m *ShardMap) bucket(userRecord UserRecord) int {
 	if len(m.shards) == 0 {
 		return 0
 	}
 
-	hk := hashKey(partitionKey)
+	hk := userRecord.ExplicitHashKey()
+	if hk == nil {
+		hk = hashKey(userRecord.PartitionKey())
+	}
 	sortFunc := func(i int) bool {
 		shard := m.shards[i]
 		end := big.NewInt(int64(0))
@@ -276,6 +290,9 @@ func (m *ShardMap) bucket(partitionKey string) int {
 		return end.Cmp(hk) > -1
 	}
 
+	// Search uses binary search to find and return the smallest index i in [0, n)
+	// at which f(i) is true
+	// See https://golang.org/pkg/sort/#Search
 	bucket := sort.Search(len(m.shards), sortFunc)
 	if bucket == len(m.shards) {
 		return -1

@@ -63,19 +63,18 @@ func (a *Aggregator) Count() int {
 
 // Put record using `data` and `partitionKey`. This method is thread-safe.
 func (a *Aggregator) Put(userRecord UserRecord) {
-	partitionKey := userRecord.PartitionKey()
+	nbytes, addPartitionKey := a.userRecordNBytes(userRecord)
 	// The protobuf message allows more efficient partition and explicit hash key packing
 	// by allowing multiple records to point to the same key in a table.
-	if _, ok := a.pkeysIndex[partitionKey]; !ok {
+	if addPartitionKey {
+		partitionKey := userRecord.PartitionKey()
+		// nbytes already includes the length of the partition key
 		a.pkeys = append(a.pkeys, partitionKey)
-		a.nbytes += len([]byte(partitionKey))
 		a.pkeysIndex[partitionKey] = len(a.pkeys) - 1
 	}
 
-	a.nbytes++ // protobuf message index and wire type
-	a.nbytes += partitionKeyIndexSize
 	a.buf = append(a.buf, userRecord)
-	a.nbytes += userRecord.Size()
+	a.nbytes += nbytes
 }
 
 // Drain create an aggregated `kinesis.PutRecordsRequestEntry`
@@ -104,6 +103,36 @@ func (a *Aggregator) Drain() (*AggregatedRecordRequest, error) {
 	request := NewAggregatedRecordRequest(aggData, &a.pkeys[0], a.explicitHashKey, a.buf)
 	a.clear()
 	return request, nil
+}
+
+// WillOverflow checks if the aggregator will exceed max record size by attempting to Put
+// the user record. If true, the aggregator should be drained before attempting a Put.
+func (a *Aggregator) WillOverflow(userRecord UserRecord) bool {
+	nbytes, _ := a.userRecordNBytes(userRecord)
+	size := len(magicNumber) + a.Size() + nbytes + md5.Size
+	return size > maxRecordSize
+}
+
+// userRecordNBytes calculates the number of bytes that will be added when adding the
+// user record to the aggregator. It also returns a bool indicating if the size of the
+// partition key is included in the results.
+func (a *Aggregator) userRecordNBytes(userRecord UserRecord) (int, bool) {
+	var (
+		nbytes         int
+		includesPkSize bool
+	)
+
+	// protobuf message index and wire type
+	nbytes += 1
+	nbytes += partitionKeyIndexSize
+	nbytes += userRecord.Size()
+
+	partitionKey := userRecord.PartitionKey()
+	if _, ok := a.pkeysIndex[partitionKey]; !ok {
+		nbytes += len([]byte(partitionKey))
+		includesPkSize = true
+	}
+	return nbytes, includesPkSize
 }
 
 func (a *Aggregator) aggregateUserRecords() []*Record {

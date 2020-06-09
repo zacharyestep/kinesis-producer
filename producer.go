@@ -98,7 +98,7 @@ func (p *Producer) PutUserRecord(userRecord UserRecord) error {
 		drained, err := p.shardMap.Put(userRecord)
 		switch err.(type) {
 		case nil:
-		case ShardBucketError:
+		case *ShardBucketError:
 			return err
 		default:
 			p.Logger.Error("drain aggregator", err)
@@ -193,8 +193,9 @@ func (p *Producer) loop() {
 	}
 
 	bufAppend := func(record *AggregatedRecordRequest) {
-		// the record size limit applies to the total size of the
+		// the PutRecords size limit applies to the total size of the
 		// partition key and data blob.
+		// TODO: does it apply to the ExplicitHashKey too?
 		rsize := len(record.Entry.Data) + len([]byte(*record.Entry.PartitionKey))
 		if size+rsize > p.BatchSize {
 			flush("batch size")
