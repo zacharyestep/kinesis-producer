@@ -51,7 +51,8 @@ type Config struct {
 
 	// GetShards is called on NewProducer to initialze the ShardMap.
 	// If ShardRefreshInterval is non-zero, GetShards will be called at that interval.
-	// Defaults to a static list of 500 shards.
+	// The default function returns a nil list of shards, which results in all records being
+	// aggregated to a single record.
 	GetShards GetShardsFunc
 
 	// BatchCount determine the maximum number of items to pack in batch.
