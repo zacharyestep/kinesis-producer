@@ -48,6 +48,7 @@ func ExampleSimple() {
 }
 
 func ExampleShardMap() {
+	logger := &StdLogger{log.New(os.Stdout, "", log.LstdFlags)}
 	client := kinesis.New(session.New(aws.NewConfig()))
 	pr := New(&Config{
 		StreamName:           "test",
@@ -55,6 +56,7 @@ func ExampleShardMap() {
 		Client:               client,
 		GetShards:            GetKinesisShardsFunc(client, "test"),
 		ShardRefreshInterval: 5 * time.Second,
+		Logger:               logger,
 	})
 
 	pr.Start()
@@ -91,7 +93,7 @@ type myExampleUserRecord struct {
 	data []byte `json:"-"`
 }
 
-func (r *myExampleUserRecord) PartitionKey() string      { return r.id }
+func (r *myExampleUserRecord) PartitionKey() string      { return r.Id }
 func (r *myExampleUserRecord) ExplicitHashKey() *big.Int { return nil }
 func (r *myExampleUserRecord) Data() []byte              { return r.data }
 func (r *myExampleUserRecord) Size() int                 { return len(r.data) }
@@ -111,6 +113,7 @@ func newMyExampleUserRecord(key, val string) (*myExampleUserRecord, error) {
 }
 
 func ExampleUserRecord() {
+	logger := &StdLogger{log.New(os.Stdout, "", log.LstdFlags)}
 	client := kinesis.New(session.New(aws.NewConfig()))
 	pr := New(&Config{
 		StreamName:           "test",
@@ -118,6 +121,7 @@ func ExampleUserRecord() {
 		Client:               client,
 		GetShards:            GetKinesisShardsFunc(client, "test"),
 		ShardRefreshInterval: 5 * time.Second,
+		Logger:               logger,
 	})
 
 	pr.Start()

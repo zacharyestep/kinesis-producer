@@ -93,7 +93,7 @@ func main() {
 	// Handle failures
 	go func() {
 		for r := range failures {
-			logger.Error("detected put failure", r.Err)
+			log.Error(r.Err)
 		}
 	}()
 
@@ -103,7 +103,7 @@ func main() {
 			for j := 0; j < 5; j++ {
 				err := pr.Put([]byte("foo"), pk)
 				if err != nil {
-					logger.Error("error producing", err)
+					log.WithError(err).Fatal("error producing")
 				}
 			}
 		}
@@ -177,7 +177,7 @@ func main() {
 	// Handle failures
 	go func() {
 		for r := range failures {
-			logger.Error("detected put failure", r.Err)
+			log.Error(r.Err)
 		}
 	}()
 
@@ -185,11 +185,11 @@ func main() {
 		for i := 0; i < 5000; i++ {
 			record, err := newMyExampleUserRecord("foo", "bar")
 			if err != nil {
-				logger.Error("error creating user record", err)
+				log.WithError(err).Fatal("error creating user record")
 			}
 			err = pr.PutUserRecord(record)
 			if err != nil {
-				logger.Error("error producing", err)
+				log.WithError(err).Fatal("error producing")
 			}
 		}
 	}()
