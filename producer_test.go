@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	k "github.com/aws/aws-sdk-go/service/kinesis"
+	"github.com/google/uuid"
 )
 
 type responseMock struct {
@@ -243,30 +244,86 @@ func (c *mockBenchmarkClient) PutRecords(*k.PutRecordsInput) (*k.PutRecordsOutpu
 	}, nil
 }
 
+func simpleUUIDRecords(dataSize int) func(int) ([]UserRecord, error) {
+	return func(count int) ([]UserRecord, error) {
+		records := make([]UserRecord, count)
+		for i := 0; i < count; i++ {
+			records[i] = newTestUserRecord(uuid.New().String(), "", mockData("foobar", dataSize))
+		}
+		return records, nil
+	}
+}
+
+func explicitHashKeyRecords(getShards GetShardsFunc, dataSize int) func(int) ([]UserRecord, error) {
+	return func(count int) ([]UserRecord, error) {
+		shards, _, err := getShards(nil)
+		if err != nil {
+			return nil, err
+		}
+
+		shardCount := len(shards)
+		records := make([]UserRecord, count)
+		for i := 0; i < count; i++ {
+			bucket := i % shardCount
+			shard := shards[bucket]
+			records[i] = newTestUserRecord(
+				uuid.New().String(),
+				*shard.HashKeyRange.StartingHashKey,
+				mockData("foobar", dataSize))
+		}
+		return records, nil
+	}
+}
+
 func BenchmarkProducer(b *testing.B) {
 	testCases := []struct {
-		name   string
-		config *Config
+		name    string
+		config  *Config
+		records func(count int) ([]UserRecord, error)
 	}{
 		{
 			name: "default producer",
 			config: &Config{
-				StreamName: "default producer",
+				StreamName:   "default producer",
+				BacklogCount: 10000,
 			},
+			records: simpleUUIDRecords(1024),
 		},
 		{
 			name: "10 shard count",
 			config: &Config{
-				StreamName: "10 shard count",
-				GetShards:  StaticGetShardsFunc(10),
+				StreamName:   "10 shard count",
+				GetShards:    StaticGetShardsFunc(10),
+				BacklogCount: 10000,
 			},
+			records: simpleUUIDRecords(1024),
 		},
 		{
 			name: "500 shard count",
 			config: &Config{
-				StreamName: "500 shard count",
-				GetShards:  StaticGetShardsFunc(500),
+				StreamName:   "500 shard count",
+				GetShards:    StaticGetShardsFunc(500),
+				BacklogCount: 10000,
 			},
+			records: simpleUUIDRecords(1024),
+		},
+		{
+			name: "10 shard count using explicit hash key",
+			config: &Config{
+				StreamName:   "10 shard count",
+				GetShards:    StaticGetShardsFunc(10),
+				BacklogCount: 10000,
+			},
+			records: explicitHashKeyRecords(StaticGetShardsFunc(10), 1024),
+		},
+		{
+			name: "500 shard count using explicit hash key",
+			config: &Config{
+				StreamName:   "500 shard count",
+				GetShards:    StaticGetShardsFunc(500),
+				BacklogCount: 10000,
+			},
+			records: explicitHashKeyRecords(StaticGetShardsFunc(500), 1024),
 		},
 	}
 
@@ -293,13 +350,9 @@ func BenchmarkProducer(b *testing.B) {
 			each := b.N / workers
 			workerWG.Add(workers)
 
-			records := make([]UserRecord, b.N)
-			for i := 0; i < b.N; i++ {
-				r, err := newMyExampleUserRecord("foo", "bar")
-				if err != nil {
-					b.Fatal(err)
-				}
-				records[i] = r
+			records, err := tc.records(b.N)
+			if err != nil {
+				b.Fatal(err)
 			}
 
 			p.Start()

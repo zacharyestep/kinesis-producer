@@ -63,6 +63,8 @@ By default, shard mapping is disabled. To use the shard mapping feature, you nee
 
 This package provides a GetShards function `GetKinesisShardsFunc` that uses an AWS client to call the `ListShards` API to get the shard list.
 
+**Note** At the time of writing, using the shard map feature adds significant overhead. Depending on the configuration and your record set, this can be more than 2x slower. Providing an explicit hash key for user records can help reduce this by quite a bit. Take a look at the benchmarks in `producer_test.go` for examples.
+
 #### Example
 ```go
 package main
