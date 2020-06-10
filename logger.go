@@ -44,3 +44,8 @@ func (l *StdLogger) valuesToString(values ...LogValue) string {
 	}
 	return strings.Join(parts, ", ")
 }
+
+type NopLogger struct{}
+
+func (_ *NopLogger) Info(msg string, values ...LogValue)             {}
+func (_ *NopLogger) Error(msg string, err error, values ...LogValue) {}

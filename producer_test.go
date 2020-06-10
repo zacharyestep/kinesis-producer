@@ -2,6 +2,7 @@ package producer
 
 import (
 	"errors"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -228,5 +229,98 @@ func TestNotify(t *testing.T) {
 	case <-done:
 	default:
 		t.Error("failed test: NotifyFailure\n\texpect failures channel to be closed")
+	}
+}
+
+type mockBenchmarkClient struct {
+	b *testing.B
+}
+
+func (c *mockBenchmarkClient) PutRecords(*k.PutRecordsInput) (*k.PutRecordsOutput, error) {
+	failed := int64(0)
+	return &k.PutRecordsOutput{
+		FailedRecordCount: &failed,
+	}, nil
+}
+
+func BenchmarkProducer(b *testing.B) {
+	testCases := []struct {
+		name   string
+		config *Config
+	}{
+		{
+			name: "default producer",
+			config: &Config{
+				StreamName: "default producer",
+			},
+		},
+		{
+			name: "10 shard count",
+			config: &Config{
+				StreamName: "10 shard count",
+				GetShards:  StaticGetShardsFunc(10),
+			},
+		},
+		{
+			name: "500 shard count",
+			config: &Config{
+				StreamName: "500 shard count",
+				GetShards:  StaticGetShardsFunc(500),
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		b.Run(tc.name, func(b *testing.B) {
+			tc.config.Client = &mockBenchmarkClient{
+				b: b,
+			}
+			tc.config.Logger = &NopLogger{}
+
+			p := New(tc.config)
+
+			failures := p.NotifyFailures()
+			failuresDone := make(chan struct{})
+			go func() {
+				defer close(failuresDone)
+				for f := range failures {
+					b.Fatal(f.Err)
+				}
+			}()
+
+			workerWG := new(sync.WaitGroup)
+			workers := runtime.NumCPU()
+			each := b.N / workers
+			workerWG.Add(workers)
+
+			records := make([]UserRecord, b.N)
+			for i := 0; i < b.N; i++ {
+				r, err := newMyExampleUserRecord("foo", "bar")
+				if err != nil {
+					b.Fatal(err)
+				}
+				records[i] = r
+			}
+
+			p.Start()
+
+			b.ResetTimer()
+
+			for i := 0; i < workers; i++ {
+				go func(index int) {
+					for j := 0; j < each; j++ {
+						record := records[index*each+j]
+						err := p.PutUserRecord(record)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+					workerWG.Done()
+				}(i)
+			}
+			workerWG.Wait()
+			p.Stop()
+			<-failuresDone
+		})
 	}
 }
