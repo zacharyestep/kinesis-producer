@@ -37,7 +37,7 @@ func main() {
 	// Handle failures
 	go func() {
 		for r := range failures {
-			log.Error(r.Err)
+			log.Error(r)
 		}
 	}()
 
@@ -95,7 +95,7 @@ func main() {
 	// Handle failures
 	go func() {
 		for r := range failures {
-			log.Error(r.Err)
+			log.Error(r)
 		}
 	}()
 
@@ -179,7 +179,7 @@ func main() {
 	// Handle failures
 	go func() {
 		for r := range failures {
-			log.Error(r.Err)
+			log.Error(r)
 		}
 	}()
 

@@ -7,20 +7,12 @@
 package producer
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/jpillora/backoff"
-)
-
-// Errors
-var (
-	ErrStoppedProducer     = errors.New("Unable to Put record. Producer is already stopped")
-	ErrIllegalPartitionKey = errors.New("Invalid parition key. Length must be at least 1 and at most 256")
-	ErrRecordSizeExceeded  = errors.New("Data must be less than or equal to 1MB in size")
 )
 
 // Producer batches records.
@@ -30,7 +22,7 @@ type Producer struct {
 	shardMap  *ShardMap
 	semaphore semaphore
 	records   chan *AggregatedRecordRequest
-	failure   chan *FailureRecord
+	failure   chan error
 	done      chan struct{}
 
 	// Current state of the Producer
@@ -96,12 +88,8 @@ func (p *Producer) PutUserRecord(userRecord UserRecord) error {
 		p.records <- NewAggregatedRecordRequest(userRecord.Data(), &partitionKey, nil, []UserRecord{userRecord})
 	} else {
 		drained, err := p.shardMap.Put(userRecord)
-		switch err.(type) {
-		case nil:
-		case *ShardBucketError:
+		if err != nil {
 			return err
-		default:
-			p.Logger.Error("drain aggregator", err)
 		}
 		if drained != nil {
 			p.records <- drained
@@ -110,27 +98,15 @@ func (p *Producer) PutUserRecord(userRecord UserRecord) error {
 	return nil
 }
 
-// Failure record type
-type FailureRecord struct {
-	Err error
-	// The PartitionKey that was used in the kinesis.PutRecordsRequestEntry
-	PartitionKey string
-	// The ExplicitHashKey that was used in the kinesis.PutRecordsRequestEntry. Will be the
-	// empty string if nil
-	ExplicitHashKey string
-	// UserRecords that were contained in the failed aggregated record request
-	UserRecords []UserRecord
-}
-
 // NotifyFailures registers and return listener to handle undeliverable messages.
 // The incoming struct has a copy of the Data and the PartitionKey along with some
 // error information about why the publishing failed.
-func (p *Producer) NotifyFailures() <-chan *FailureRecord {
+func (p *Producer) NotifyFailures() <-chan error {
 	p.Lock()
 	defer p.Unlock()
 	if !p.notify {
 		p.notify = true
-		p.failure = make(chan *FailureRecord, p.BacklogCount)
+		p.failure = make(chan error, p.BacklogCount)
 	}
 	return p.failure
 }
@@ -237,6 +213,12 @@ func (p *Producer) loop() {
 			records, err := p.shardMap.UpdateShards(p.GetShards)
 			if err != nil {
 				p.Logger.Error("UpdateShards error", err)
+				p.RLock()
+				notify := p.notify
+				p.RUnlock()
+				if notify {
+					p.failure <- err
+				}
 				continue
 			}
 			for _, record := range records {
@@ -253,8 +235,15 @@ func (p *Producer) drainIfNeed() []*AggregatedRecordRequest {
 		return nil
 	}
 	records, errs := p.shardMap.Drain()
-	for _, err := range errs {
-		p.Logger.Error("drain aggregator", err)
+	if len(errs) > 0 {
+		p.RLock()
+		notify := p.notify
+		p.RUnlock()
+		if notify {
+			for _, err := range errs {
+				p.failure <- err
+			}
+		}
 	}
 	return records
 }

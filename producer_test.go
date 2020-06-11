@@ -210,7 +210,7 @@ func TestNotify(t *testing.T) {
 					close(done)
 					return
 				}
-				failed += len(failure.UserRecords)
+				failed += len(failure.(*FailureRecord).UserRecords)
 			case <-timeout:
 				return
 			}
@@ -341,7 +341,7 @@ func BenchmarkProducer(b *testing.B) {
 			go func() {
 				defer close(failuresDone)
 				for f := range failures {
-					b.Fatal(f.Err)
+					b.Fatal(f.Error())
 				}
 			}()
 

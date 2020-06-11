@@ -2,7 +2,6 @@ package producer
 
 import (
 	"crypto/md5"
-	"fmt"
 	"math/big"
 	"sort"
 	"sync"
@@ -13,17 +12,6 @@ import (
 // 2^128 exclusive upper bound
 // Hash key ranges are 0 indexed, so true max is 2^128 - 1
 const maxHashKeyRange = "340282366920938463463374607431768211455"
-
-type ShardBucketError struct {
-	UserRecord
-}
-
-func (s *ShardBucketError) Error() string {
-	if hk := s.ExplicitHashKey(); hk != nil {
-		return fmt.Sprintf("ExplicitHashKey outside shard key range: %s", hk.String())
-	}
-	return fmt.Sprintf("PartitionKey outside shard key range: %s", s.PartitionKey())
-}
 
 // ShardLister is the interface that wraps the KinesisAPI.ListShards method.
 type ShardLister interface {

@@ -30,7 +30,7 @@ func ExampleSimple() {
 	// Handle failures
 	go func() {
 		for r := range failures {
-			logger.Error("detected put failure", r.Err)
+			logger.Error("detected put failure", r)
 		}
 	}()
 
@@ -66,7 +66,7 @@ func ExampleShardMap() {
 	// Handle failures
 	go func() {
 		for r := range failures {
-			logger.Error("detected put failure", r.Err)
+			logger.Error("detected put failure", r)
 		}
 	}()
 
@@ -131,7 +131,7 @@ func ExampleUserRecord() {
 	// Handle failures
 	go func() {
 		for r := range failures {
-			logger.Error("detected put failure", r.Err)
+			logger.Error("detected put failure", r)
 		}
 	}()
 

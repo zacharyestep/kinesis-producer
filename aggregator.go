@@ -91,7 +91,14 @@ func (a *Aggregator) Drain() (*AggregatedRecordRequest, error) {
 		Records:           a.aggregateUserRecords(),
 	})
 	if err != nil {
-		return nil, err
+		drainErr := &DrainError{
+			Err:         err,
+			UserRecords: a.buf,
+		}
+		// Q: Should we clear the aggregator on drain error? Otherwise I would expect Marshal
+		//		to fail indefinitely until the buffer is cleared
+		a.clear()
+		return nil, drainErr
 	}
 
 	h := md5.New()
