@@ -68,17 +68,17 @@ func (p *Producer) PutUserRecord(userRecord UserRecord) error {
 	stopped := p.stopped
 	p.RUnlock()
 	if stopped {
-		return ErrStoppedProducer
+		return userRecord.(*ErrStoppedProducer)
 	}
 
 	recordSize := userRecord.Size()
 	if userRecord.Size() > maxRecordSize {
-		return ErrRecordSizeExceeded
+		return userRecord.(*ErrRecordSizeExceeded)
 	}
 
 	partitionKey := userRecord.PartitionKey()
 	if l := len(partitionKey); l < 1 || l > 256 {
-		return ErrIllegalPartitionKey
+		return userRecord.(*ErrIllegalPartitionKey)
 	}
 
 	nbytes := recordSize + len([]byte(partitionKey))
