@@ -1,16 +1,32 @@
 package producer
 
 import (
-	"errors"
 	"fmt"
 )
 
-// Errors
-var (
-	ErrStoppedProducer     = errors.New("Unable to Put record. Producer is already stopped")
-	ErrIllegalPartitionKey = errors.New("Invalid parition key. Length must be at least 1 and at most 256")
-	ErrRecordSizeExceeded  = errors.New("Data must be less than or equal to 1MB in size")
-)
+type ErrStoppedProducer struct {
+	UserRecord
+}
+
+func (e *ErrStoppedProducer) Error() string {
+	return "Unable to Put record. Producer is already stopped"
+}
+
+type ErrIllegalPartitionKey struct {
+	UserRecord
+}
+
+func (e *ErrIllegalPartitionKey) Error() string {
+	return fmt.Sprintf("Invalid parition key. Length must be at least 1 and at most 256: %s", e.PartitionKey())
+}
+
+type ErrRecordSizeExceeded struct {
+	UserRecord
+}
+
+func (e *ErrRecordSizeExceeded) Error() string {
+	return fmt.Sprintf("Data must be less than or equal to 1MB in size: %d", e.Size())
+}
 
 // Failure record type for failures from Kinesis PutRecords request
 type FailureRecord struct {
@@ -47,4 +63,12 @@ func (s *ShardBucketError) Error() string {
 		return fmt.Sprintf("ExplicitHashKey outside shard key range: %s", hk.String())
 	}
 	return fmt.Sprintf("PartitionKey outside shard key range: %s", s.PartitionKey())
+}
+
+type ShardRefreshError struct {
+	Err error
+}
+
+func (s *ShardRefreshError) Error() string {
+	return fmt.Sprintf("ShardRefreshError: %v", s.Err)
 }

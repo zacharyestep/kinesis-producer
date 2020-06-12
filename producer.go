@@ -217,7 +217,9 @@ func (p *Producer) loop() {
 				notify := p.notify
 				p.RUnlock()
 				if notify {
-					p.failure <- err
+					p.failure <- &ShardRefreshError{
+						Err: err,
+					}
 				}
 				continue
 			}
