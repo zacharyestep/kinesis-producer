@@ -598,36 +598,52 @@ func TestGetKinesisShardsFunc(t *testing.T) {
 	}
 }
 
-func mockGetShards(shards []*k.Shard, updated bool, err error) GetShardsFunc {
-	return func(_ []*k.Shard) ([]*k.Shard, bool, error) {
-		return shards, updated, err
-	}
-}
-
-func TestUpdateShards(t *testing.T) {
+func TestShardMapUpdateShards(t *testing.T) {
 	testCases := []struct {
 		name                string
 		startingShards      string
 		aggregateBatchCount int
 		records             []UserRecord
-		getShardsShards     string
-		getShardsUpdated    bool
-		getShardsError      string
+		newShards           string
+		pendingRecords      []*AggregatedRecordRequest
 		updateDrained       []*AggregatedRecordRequest
 		postDrained         []*AggregatedRecordRequest
 		expectedError       string
 	}{
 		{
-			name:                "returns error from GetShardsFunc",
-			startingShards:      "testdata/TestUpdateShards/error/startingShards.json",
+			name:                "returns error from pending record put",
+			startingShards:      "testdata/TestShardMapUpdateShards/error_pending_put/startingShards.json",
 			aggregateBatchCount: 2,
 			records: []UserRecord{
 				newTestUserRecord("foo", "100141183460469231731687303715884105727", []byte("hello")),
-				newTestUserRecord("bar", "200141183460469231731687303715884105727", []byte("world")),
+				newTestUserRecord("bar", "230141183460469231731687303715884105727", []byte("world")),
 				newTestUserRecord("foo", "110141183460469231731687303715884105727", []byte("hello")),
-				newTestUserRecord("bar", "210141183460469231731687303715884105727", []byte("world")),
 			},
-			getShardsError: "getShards error",
+			newShards: "testdata/TestShardMapUpdateShards/error_pending_put/newShards.json",
+			pendingRecords: []*AggregatedRecordRequest{
+				&AggregatedRecordRequest{
+					Entry: &k.PutRecordsRequestEntry{
+						// StartingHashKey of second shard
+						ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
+					},
+					UserRecords: []UserRecord{
+						newTestUserRecord("baz", "200141183460469231731687303715884105727", []byte("world")),
+						newTestUserRecord("baz", "210141183460469231731687303715884105727", []byte("world")),
+					},
+				},
+			},
+			updateDrained: []*AggregatedRecordRequest{
+				&AggregatedRecordRequest{
+					Entry: &k.PutRecordsRequestEntry{
+						// StartingHashKey of second shard
+						ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
+					},
+					UserRecords: []UserRecord{
+						newTestUserRecord("baz", "200141183460469231731687303715884105727", []byte("world")),
+						newTestUserRecord("baz", "210141183460469231731687303715884105727", []byte("world")),
+					},
+				},
+			},
 			postDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
 					Entry: &k.PutRecordsRequestEntry{
@@ -646,23 +662,45 @@ func TestUpdateShards(t *testing.T) {
 					},
 					UserRecords: []UserRecord{
 						newTestUserRecord("bar", "", []byte("world")),
-						newTestUserRecord("bar", "", []byte("world")),
 					},
 				},
 			},
-			expectedError: "getShards error",
+			expectedError: "ExplicitHashKey outside shard key range: 200141183460469231731687303715884105727",
 		},
 		{
-			name:                "does not update shards if updated false",
-			startingShards:      "testdata/TestUpdateShards/no_update/startingShards.json",
+			name:                "returns error from aggregator record put",
+			startingShards:      "testdata/TestShardMapUpdateShards/error_agg_put/startingShards.json",
 			aggregateBatchCount: 2,
 			records: []UserRecord{
 				newTestUserRecord("foo", "100141183460469231731687303715884105727", []byte("hello")),
-				newTestUserRecord("bar", "200141183460469231731687303715884105727", []byte("world")),
+				newTestUserRecord("bar", "230141183460469231731687303715884105727", []byte("world")),
 				newTestUserRecord("foo", "110141183460469231731687303715884105727", []byte("hello")),
-				newTestUserRecord("bar", "210141183460469231731687303715884105727", []byte("world")),
 			},
-			getShardsUpdated: false,
+			newShards: "testdata/TestShardMapUpdateShards/error_agg_put/newShards.json",
+			pendingRecords: []*AggregatedRecordRequest{
+				&AggregatedRecordRequest{
+					Entry: &k.PutRecordsRequestEntry{
+						// StartingHashKey of second shard
+						ExplicitHashKey: aws.String("0"),
+					},
+					UserRecords: []UserRecord{
+						newTestUserRecord("baz", "120141183460469231731687303715884105727", []byte("world")),
+						newTestUserRecord("baz", "130141183460469231731687303715884105727", []byte("world")),
+					},
+				},
+			},
+			updateDrained: []*AggregatedRecordRequest{
+				&AggregatedRecordRequest{
+					Entry: &k.PutRecordsRequestEntry{
+						// StartingHashKey of second shard
+						ExplicitHashKey: aws.String("0"),
+					},
+					UserRecords: []UserRecord{
+						newTestUserRecord("baz", "120141183460469231731687303715884105727", []byte("world")),
+						newTestUserRecord("baz", "130141183460469231731687303715884105727", []byte("world")),
+					},
+				},
+			},
 			postDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
 					Entry: &k.PutRecordsRequestEntry{
@@ -681,14 +719,48 @@ func TestUpdateShards(t *testing.T) {
 					},
 					UserRecords: []UserRecord{
 						newTestUserRecord("bar", "", []byte("world")),
-						newTestUserRecord("bar", "", []byte("world")),
 					},
 				},
 			},
+			expectedError: "ExplicitHashKey outside shard key range: 230141183460469231731687303715884105727",
 		},
+		// {
+		// 	name:                "does not update shards if updated false",
+		// 	startingShards:      "testdata/TestShardMapUpdateShards/no_update/startingShards.json",
+		// 	aggregateBatchCount: 2,
+		// 	records: []UserRecord{
+		// 		newTestUserRecord("foo", "100141183460469231731687303715884105727", []byte("hello")),
+		// 		newTestUserRecord("bar", "200141183460469231731687303715884105727", []byte("world")),
+		// 		newTestUserRecord("foo", "110141183460469231731687303715884105727", []byte("hello")),
+		// 		newTestUserRecord("bar", "210141183460469231731687303715884105727", []byte("world")),
+		// 	},
+		// 	getShardsUpdated: false,
+		// 	postDrained: []*AggregatedRecordRequest{
+		// 		&AggregatedRecordRequest{
+		// 			Entry: &k.PutRecordsRequestEntry{
+		// 				// StartingHashKey of first shard
+		// 				ExplicitHashKey: aws.String("0"),
+		// 			},
+		// 			UserRecords: []UserRecord{
+		// 				newTestUserRecord("foo", "", []byte("hello")),
+		// 				newTestUserRecord("foo", "", []byte("hello")),
+		// 			},
+		// 		},
+		// 		&AggregatedRecordRequest{
+		// 			Entry: &k.PutRecordsRequestEntry{
+		// 				// StartingHashKey of second shard
+		// 				ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
+		// 			},
+		// 			UserRecords: []UserRecord{
+		// 				newTestUserRecord("bar", "", []byte("world")),
+		// 				newTestUserRecord("bar", "", []byte("world")),
+		// 			},
+		// 		},
+		// 	},
+		// },
 		{
 			name:                "updates shards and redistributes records",
-			startingShards:      "testdata/TestUpdateShards/update/startingShards.json",
+			startingShards:      "testdata/TestShardMapUpdateShards/update/startingShards.json",
 			aggregateBatchCount: 4,
 			records: []UserRecord{
 				newTestUserRecord("foo", "100141183460469231731687303715884105727", []byte("hello")),
@@ -696,8 +768,29 @@ func TestUpdateShards(t *testing.T) {
 				newTestUserRecord("foo", "110141183460469231731687303715884105727", []byte("hello")),
 				newTestUserRecord("bar", "210141183460469231731687303715884105727", []byte("world")),
 			},
-			getShardsShards:  "testdata/TestUpdateShards/update/getShardsShards.json",
-			getShardsUpdated: true,
+			newShards: "testdata/TestShardMapUpdateShards/update/newShards.json",
+			pendingRecords: []*AggregatedRecordRequest{
+				&AggregatedRecordRequest{
+					Entry: &k.PutRecordsRequestEntry{
+						// StartingHashKey of first shard
+						ExplicitHashKey: aws.String("0"),
+					},
+					UserRecords: []UserRecord{
+						newTestUserRecord("foo", "120141183460469231731687303715884105727", []byte("hello")),
+						newTestUserRecord("foo", "130141183460469231731687303715884105727", []byte("hello")),
+					},
+				},
+				&AggregatedRecordRequest{
+					Entry: &k.PutRecordsRequestEntry{
+						// StartingHashKey of second shard
+						ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
+					},
+					UserRecords: []UserRecord{
+						newTestUserRecord("bar", "220141183460469231731687303715884105727", []byte("world")),
+						newTestUserRecord("bar", "230141183460469231731687303715884105727", []byte("world")),
+					},
+				},
+			},
 			postDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
 					Entry: &k.PutRecordsRequestEntry{
@@ -705,6 +798,8 @@ func TestUpdateShards(t *testing.T) {
 						ExplicitHashKey: aws.String("0"),
 					},
 					UserRecords: []UserRecord{
+						newTestUserRecord("foo", "", []byte("hello")),
+						newTestUserRecord("foo", "", []byte("hello")),
 						newTestUserRecord("foo", "", []byte("hello")),
 						newTestUserRecord("foo", "", []byte("hello")),
 					},
@@ -715,6 +810,8 @@ func TestUpdateShards(t *testing.T) {
 						ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
 					},
 					UserRecords: []UserRecord{
+						newTestUserRecord("bar", "", []byte("world")),
+						newTestUserRecord("bar", "", []byte("world")),
 						newTestUserRecord("bar", "", []byte("world")),
 						newTestUserRecord("bar", "", []byte("world")),
 					},
@@ -723,7 +820,7 @@ func TestUpdateShards(t *testing.T) {
 		},
 		{
 			name:                "updates shards and redistributes records, returning drained records from the process",
-			startingShards:      "testdata/TestUpdateShards/update_drained/startingShards.json",
+			startingShards:      "testdata/TestShardMapUpdateShards/update_drained/startingShards.json",
 			aggregateBatchCount: 2,
 			records: []UserRecord{
 				newTestUserRecord("foo", "100141183460469231731687303715884105727", []byte("hello")),
@@ -731,9 +828,38 @@ func TestUpdateShards(t *testing.T) {
 				newTestUserRecord("foo", "110141183460469231731687303715884105727", []byte("hello")),
 				newTestUserRecord("bar", "210141183460469231731687303715884105727", []byte("world")),
 			},
-			getShardsShards:  "testdata/TestUpdateShards/update_drained/getShardsShards.json",
-			getShardsUpdated: true,
+			newShards: "testdata/TestShardMapUpdateShards/update_drained/newShards.json",
+			pendingRecords: []*AggregatedRecordRequest{
+				&AggregatedRecordRequest{
+					Entry: &k.PutRecordsRequestEntry{
+						// StartingHashKey of first shard
+						ExplicitHashKey: aws.String("0"),
+					},
+					UserRecords: []UserRecord{
+						newTestUserRecord("fuzz", "120141183460469231731687303715884105727", []byte("hello")),
+					},
+				},
+				&AggregatedRecordRequest{
+					Entry: &k.PutRecordsRequestEntry{
+						// StartingHashKey of second shard
+						ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
+					},
+					UserRecords: []UserRecord{
+						newTestUserRecord("buzz", "220141183460469231731687303715884105727", []byte("world")),
+					},
+				},
+			},
 			updateDrained: []*AggregatedRecordRequest{
+				&AggregatedRecordRequest{
+					Entry: &k.PutRecordsRequestEntry{
+						// StartingHashKey of first shard
+						ExplicitHashKey: aws.String("0"),
+					},
+					UserRecords: []UserRecord{
+						newTestUserRecord("fuzz", "", []byte("hello")),
+						newTestUserRecord("buzz", "", []byte("world")),
+					},
+				},
 				&AggregatedRecordRequest{
 					Entry: &k.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
@@ -778,32 +904,20 @@ func TestUpdateShards(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			var (
-				getShardsShards []*k.Shard
-				getShardsError  error
-			)
-			if tc.getShardsShards != "" {
-				getShardsShards = make([]*k.Shard, 0)
-				loadJSONFromFile(t, tc.getShardsShards, &getShardsShards)
+			var newShards []*k.Shard
+			if tc.newShards != "" {
+				newShards = make([]*k.Shard, 0)
+				loadJSONFromFile(t, tc.newShards, &newShards)
 			}
-			if tc.getShardsError != "" {
-				getShardsError = errors.New(tc.getShardsError)
-			}
-			getShards := mockGetShards(getShardsShards, tc.getShardsUpdated, getShardsError)
 
-			gotUpdateDrained, gotError := shardMap.UpdateShards(getShards)
-
+			gotUpdateDrained, gotError := shardMap.UpdateShards(newShards, tc.pendingRecords)
 			if tc.expectedError != "" {
-				require.Nil(t, gotUpdateDrained)
 				require.EqualError(t, gotError, tc.expectedError)
-				require.Equal(t, startingShards, shardMap.shards)
-			} else if !tc.getShardsUpdated {
-				require.Nil(t, gotUpdateDrained)
-				require.Nil(t, gotError)
+				require.Equal(t, tc.pendingRecords, gotUpdateDrained)
 				require.Equal(t, startingShards, shardMap.shards)
 			} else {
 				require.Nil(t, gotError)
-				require.Equal(t, getShardsShards, shardMap.shards)
+				require.Equal(t, newShards, shardMap.shards)
 			}
 
 			compareAggregatedRecordRequests(t, tc.updateDrained, gotUpdateDrained)

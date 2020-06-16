@@ -183,6 +183,14 @@ func (m *ShardMap) Drain() ([]*AggregatedRecordRequest, []error) {
 	return requests, errs
 }
 
+// Shards returns the list of shards
+func (m *ShardMap) Shards() []*k.Shard {
+	m.RLock()
+	shards := m.shards
+	m.RUnlock()
+	return shards
+}
+
 // Update the list of shards and redistribute buffered user records.
 // Returns any records that were drained due to redistribution.
 // Shards are not updated if an error occurs during redistribution.
@@ -193,31 +201,35 @@ func (m *ShardMap) Drain() ([]*AggregatedRecordRequest, []error) {
 //			 it out since we retain original partition keys (but not explicit hash keys)
 //			 Shard merging should not be an issue since records from both shards should fall
 //			 into the merged hash key range.
-func (m *ShardMap) UpdateShards(getShards GetShardsFunc) ([]*AggregatedRecordRequest, error) {
-	m.RLock()
-	old := m.shards
-	m.RUnlock()
-
-	// Possible race condition if UpdateShards is called concurrently
-	// but should not be concern since Producer has single go routine for updating shards
-	shards, updated, err := getShards(old)
-	if err != nil {
-		return nil, err
-	}
-	if !updated {
-		return nil, nil
-	}
-
+func (m *ShardMap) UpdateShards(shards []*k.Shard, pendingRecords []*AggregatedRecordRequest) ([]*AggregatedRecordRequest, error) {
 	m.Lock()
+	defer m.Unlock()
+
 	update := NewShardMap(shards, m.aggregateBatchCount)
 	var drained []*AggregatedRecordRequest
+
+	// first put any pending UserRecords from inflight requests
+	for _, record := range pendingRecords {
+		for _, userRecord := range record.UserRecords {
+			req, err := update.put(userRecord)
+			if err != nil {
+				// if we encounter an error trying to redistribute the records, return the pending
+				// records to the Producer tries to send them again. They won't be redistributed
+				// across new shards, but at least they won't be lost.
+				return pendingRecords, err
+			}
+			if req != nil {
+				drained = append(drained, req)
+			}
+		}
+	}
+	// then redistribute the records still being aggregated
 	for _, agg := range m.aggregators {
 		// We don't need to get the aggregator lock because we have the shard map write lock
 		for _, userRecord := range agg.buf {
 			req, err := update.put(userRecord)
 			if err != nil {
-				m.Unlock()
-				return nil, err
+				return pendingRecords, err
 			}
 			if req != nil {
 				drained = append(drained, req)
@@ -227,7 +239,6 @@ func (m *ShardMap) UpdateShards(getShards GetShardsFunc) ([]*AggregatedRecordReq
 	// Only update m if we successfully redistributed all the user records
 	m.shards = update.shards
 	m.aggregators = update.aggregators
-	m.Unlock()
 	return drained, nil
 }
 
@@ -236,7 +247,7 @@ func (m *ShardMap) UpdateShards(getShards GetShardsFunc) ([]*AggregatedRecordReq
 func (m *ShardMap) put(userRecord UserRecord) (*AggregatedRecordRequest, error) {
 	bucket := m.bucket(userRecord)
 	if bucket == -1 {
-		return nil, userRecord.(*ShardBucketError)
+		return nil, &ShardBucketError{UserRecord: userRecord}
 	}
 	a := m.aggregators[bucket]
 	a.Lock()

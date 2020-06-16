@@ -24,6 +24,7 @@ type Producer struct {
 	records   chan *AggregatedRecordRequest
 	failure   chan error
 	done      chan struct{}
+	inFlight  sync.WaitGroup
 
 	// Current state of the Producer
 	// notify set to true after calling to `NotifyFailures`
@@ -31,6 +32,9 @@ type Producer struct {
 	// stopped set to true after `Stop`ing the Producer.
 	// This will prevent from user to `Put` any new data.
 	stopped bool
+	// set to true when shards are being updated and we need to reaggregate in flight requests
+	updatingShards bool
+	pendingRecords chan *AggregatedRecordRequest
 }
 
 // New creates new producer with the given config.
@@ -162,6 +166,7 @@ func (p *Producer) loop() {
 	}
 
 	flush := func(msg string) {
+		p.inFlight.Add(1)
 		p.semaphore.acquire()
 		go p.flush(buf, msg)
 		size = 0
@@ -210,7 +215,7 @@ func (p *Producer) loop() {
 				flush("interval")
 			}
 		case <-shardTickC:
-			records, err := p.shardMap.UpdateShards(p.GetShards)
+			records, err := p.updateShards()
 			if err != nil {
 				p.Logger.Error("UpdateShards error", err)
 				p.RLock()
@@ -250,6 +255,50 @@ func (p *Producer) drainIfNeed() []*AggregatedRecordRequest {
 	return records
 }
 
+func (p *Producer) updateShards() ([]*AggregatedRecordRequest, error) {
+	old := p.shardMap.Shards()
+	shards, updated, err := p.GetShards(old)
+	if err != nil {
+		return nil, err
+	}
+	if !updated {
+		return nil, nil
+	}
+
+	p.Lock()
+	p.updatingShards = true
+	p.pendingRecords = make(chan *AggregatedRecordRequest, p.BacklogCount)
+	var (
+		pending        sync.WaitGroup
+		pendingRecords []*AggregatedRecordRequest
+	)
+	pending.Add(1)
+	go func() {
+		for record := range p.pendingRecords {
+			pendingRecords = append(pendingRecords, record)
+		}
+		pending.Done()
+	}()
+	p.Unlock()
+
+	// wait for all inflight requests to finish. They should send any pending requests to
+	// p.pendingRecords
+	p.inFlight.Wait()
+	close(p.pendingRecords)
+	pending.Wait()
+
+	// update shard map with new shards and redistribute any pending records
+	// across the new map
+	records, err := p.shardMap.UpdateShards(shards, pendingRecords)
+
+	p.Lock()
+	p.updatingShards = false
+	p.pendingRecords = nil
+	p.Unlock()
+
+	return records, err
+}
+
 // flush records and retry failures if necessary.
 // for example: when we get "ProvisionedThroughputExceededException"
 func (p *Producer) flush(records []*AggregatedRecordRequest, reason string) {
@@ -257,6 +306,7 @@ func (p *Producer) flush(records []*AggregatedRecordRequest, reason string) {
 		Jitter: true,
 	}
 
+	defer p.inFlight.Done()
 	defer p.semaphore.release()
 
 	for {
@@ -315,6 +365,21 @@ func (p *Producer) flush(records []*AggregatedRecordRequest, reason string) {
 		// change the logging state for the next itertion
 		reason = "retry"
 		records = failures(records, out.Records, failed)
+
+		// check if the producer is trying to update shards so we can react to autoscaling
+		p.RLock()
+		if p.updatingShards {
+			p.Logger.Info(
+				"Shards updating, redistributing inflight requests",
+				LogValue{"pending", len(records)},
+			)
+			for _, record := range records {
+				p.pendingRecords <- record
+			}
+			p.RUnlock()
+			return
+		}
+		p.RUnlock()
 	}
 }
 
