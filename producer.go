@@ -226,7 +226,6 @@ func (p *Producer) loop() {
 						Err: err,
 					}
 				}
-				continue
 			}
 			for _, record := range records {
 				bufAppend(record)
