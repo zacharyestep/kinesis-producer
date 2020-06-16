@@ -1,0 +1,13 @@
+[
+    {
+        "ShardId": "shardId-000000000001",
+        "ParentShardId": "shardId-000000000000",
+        "HashKeyRange": {
+            "StartingHashKey": "0",
+            "EndingHashKey": "170141183460469231731687303715884105727"
+        },
+        "SequenceNumberRange": {
+            "StartingSequenceNumber": "49607779829777788338931845322117935477456973969091461138"
+        }
+    }
+]
