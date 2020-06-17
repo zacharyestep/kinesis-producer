@@ -33,7 +33,7 @@ type Producer struct {
 	// This will prevent from user to `Put` any new data.
 	stopped bool
 	// set to true when shards are being updated and we need to reaggregate in flight requests
-	updatingShards bool
+	updatingShards chan struct{}
 	pendingRecords chan *AggregatedRecordRequest
 }
 
@@ -70,9 +70,16 @@ func (p *Producer) Put(data []byte, partitionKey string) error {
 func (p *Producer) PutUserRecord(userRecord UserRecord) error {
 	p.RLock()
 	stopped := p.stopped
+	updatingShards := p.updatingShards
 	p.RUnlock()
 	if stopped {
 		return userRecord.(*ErrStoppedProducer)
+	}
+
+	// If the producer is in the process of updating the shard map, block puts until it is
+	// complete
+	if updatingShards != nil {
+		<-updatingShards
 	}
 
 	recordSize := userRecord.Size()
@@ -215,6 +222,8 @@ func (p *Producer) loop() {
 				flush("interval")
 			}
 		case <-shardTickC:
+			// flush out the buf before updating shards
+			flush("shard refresh")
 			records, err := p.updateShards()
 			if err != nil {
 				p.Logger.Error("UpdateShards error", err)
@@ -227,6 +236,8 @@ func (p *Producer) loop() {
 					}
 				}
 			}
+			// we append records even if there was an error because updateShards may have already
+			// drained the backlog
 			for _, record := range records {
 				bufAppend(record)
 			}
@@ -265,7 +276,7 @@ func (p *Producer) updateShards() ([]*AggregatedRecordRequest, error) {
 	}
 
 	p.Lock()
-	p.updatingShards = true
+	p.updatingShards = make(chan struct{})
 	p.pendingRecords = make(chan *AggregatedRecordRequest, p.BacklogCount)
 	var (
 		pending        sync.WaitGroup
@@ -273,10 +284,26 @@ func (p *Producer) updateShards() ([]*AggregatedRecordRequest, error) {
 	)
 	pending.Add(1)
 	go func() {
+		defer pending.Done()
+		// first collect pending records from in flight flushes
 		for record := range p.pendingRecords {
 			pendingRecords = append(pendingRecords, record)
 		}
-		pending.Done()
+
+		// then drain out the backlog of requests waiting to be flushed
+		for {
+			select {
+			case record, ok := <-p.records:
+				if !ok {
+					return
+				}
+				pendingRecords = append(pendingRecords, record)
+			default:
+				// since Put will block while the producer is updating, we will eventually reach
+				// the default case once we exhaust p.records
+				return
+			}
+		}
 	}()
 	p.Unlock()
 
@@ -291,7 +318,8 @@ func (p *Producer) updateShards() ([]*AggregatedRecordRequest, error) {
 	records, err := p.shardMap.UpdateShards(shards, pendingRecords)
 
 	p.Lock()
-	p.updatingShards = false
+	close(p.updatingShards)
+	p.updatingShards = nil
 	p.pendingRecords = nil
 	p.Unlock()
 
@@ -367,7 +395,7 @@ func (p *Producer) flush(records []*AggregatedRecordRequest, reason string) {
 
 		// check if the producer is trying to update shards so we can react to autoscaling
 		p.RLock()
-		if p.updatingShards {
+		if p.updatingShards != nil {
 			p.Logger.Info(
 				"Shards updating, redistributing inflight requests",
 				LogValue{"pending", len(records)},
