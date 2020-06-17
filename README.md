@@ -59,7 +59,7 @@ func main() {
 
 The `Producer` supports aggregation based on a shard map. UserRecords get mapped to a shard using the md5 hash of the Partition Key or a provided Explicit Hash Key. Records mapped to the same shard are aggregated together.
 
-By default, shard mapping is disabled. To use the shard mapping feature, you need to set `Config.GetShards`. This function will be called on producer initialization to populate the shard map. You can optionally provide a refresh interval `Config.ShardRefreshInterval` to update the map.
+By default, shard mapping is disabled. To use the shard mapping feature, you need to set `Config.GetShards`. This function will be called on producer initialization to populate the shard map. You can optionally provide a refresh interval `Config.ShardRefreshInterval` to update the map. Note that Puts to the Producer are blocked while it is updating the shard map so that it can reaggregate requests based on the new map. It is only blocking during the reaggregation phase.
 
 This package provides a GetShards function `GetKinesisShardsFunc` that uses an AWS client to call the `ListShards` API to get the shard list.
 
