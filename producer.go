@@ -223,8 +223,10 @@ func (p *Producer) loop() {
 			}
 		case <-shardTickC:
 			// flush out the buf before updating shards
-			flush("shard refresh")
-			records, err := p.updateShards()
+			if size > 0 {
+				flush("shard refresh")
+			}
+			err := p.updateShards()
 			if err != nil {
 				p.Logger.Error("UpdateShards error", err)
 				p.RLock()
@@ -235,11 +237,6 @@ func (p *Producer) loop() {
 						Err: err,
 					}
 				}
-			}
-			// we append records even if there was an error because updateShards may have already
-			// drained the backlog
-			for _, record := range records {
-				bufAppend(record)
 			}
 		case <-p.done:
 			drain = true
@@ -265,14 +262,14 @@ func (p *Producer) drainIfNeed() []*AggregatedRecordRequest {
 	return records
 }
 
-func (p *Producer) updateShards() ([]*AggregatedRecordRequest, error) {
+func (p *Producer) updateShards() error {
 	old := p.shardMap.Shards()
 	shards, updated, err := p.GetShards(old)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if !updated {
-		return nil, nil
+		return nil
 	}
 
 	p.Lock()
@@ -318,12 +315,29 @@ func (p *Producer) updateShards() ([]*AggregatedRecordRequest, error) {
 	records, err := p.shardMap.UpdateShards(shards, pendingRecords)
 
 	p.Lock()
-	close(p.updatingShards)
-	p.updatingShards = nil
+	updatingShards := p.updatingShards
 	p.pendingRecords = nil
 	p.Unlock()
 
-	return records, err
+	// send the remapped records back through the backlog channel in a go routine
+	// so the main loop is not blocked. This will allow the producer to react to another
+	// shard update during the re-flush process
+	go func() {
+		for _, record := range records {
+			p.records <- record
+		}
+		p.Lock()
+		// Wait until all existing records have been sent to the backlog before unblocking the Puts
+		close(updatingShards)
+		// If they are not equal, that means a second update shards call has been made
+		// so we do not want to set the channel to nil
+		if p.updatingShards == updatingShards {
+			p.updatingShards = nil
+		}
+		p.Unlock()
+	}()
+
+	return err
 }
 
 // flush records and retry failures if necessary.
@@ -395,7 +409,7 @@ func (p *Producer) flush(records []*AggregatedRecordRequest, reason string) {
 
 		// check if the producer is trying to update shards so we can react to autoscaling
 		p.RLock()
-		if p.updatingShards != nil {
+		if p.pendingRecords != nil {
 			p.Logger.Info(
 				"Shards updating, redistributing inflight requests",
 				LogValue{"pending", len(records)},
