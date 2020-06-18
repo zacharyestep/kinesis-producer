@@ -161,17 +161,30 @@ func TestProducer(t *testing.T) {
 		test.config.MaxConnections = 1
 		test.config.Client = test.putter
 		p := New(test.config)
+		failures := p.NotifyFailures()
+		var ewg sync.WaitGroup
+		ewg.Add(1)
+		go func() {
+			defer ewg.Done()
+			for err := range failures {
+				t.Error(err)
+			}
+		}()
 		p.Start()
 		var wg sync.WaitGroup
 		wg.Add(len(test.records))
 		for _, r := range test.records {
 			go func(s string) {
-				p.Put([]byte(s), s)
+				err := p.Put([]byte(s), s)
+				if err != nil {
+					t.Error(err)
+				}
 				wg.Done()
 			}(r)
 		}
 		wg.Wait()
 		p.Stop()
+		ewg.Wait()
 		for k, v := range test.putter.incoming {
 			if len(v) != len(test.outgoing[k]) {
 				t.Errorf("failed test: %s\n\texcpeted:%v\n\tactual:  %v", test.name,
