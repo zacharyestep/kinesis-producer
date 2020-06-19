@@ -54,6 +54,8 @@ func GetKinesisShardsFunc(client ShardLister, streamName string) GetShardsFunc {
 			}
 		}
 
+		sort.Sort(ShardSlice(shards))
+
 		if shardsEqual(old, shards) {
 			return nil, false, nil
 		}
@@ -100,6 +102,17 @@ func StaticGetShardsFunc(count int) GetShardsFunc {
 		return shards, false, nil
 	}
 }
+
+type ShardSlice []*k.Shard
+
+func (p ShardSlice) Len() int { return len(p) }
+func (p ShardSlice) Less(i, j int) bool {
+	a, _ := new(big.Int).SetString(*p[i].HashKeyRange.StartingHashKey, 10)
+	b, _ := new(big.Int).SetString(*p[j].HashKeyRange.StartingHashKey, 10)
+	// a < b
+	return a.Cmp(b) == -1
+}
+func (p ShardSlice) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
 // Checks to see if the shards have the same hash key ranges
 func shardsEqual(a, b []*k.Shard) bool {

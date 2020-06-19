@@ -528,6 +528,13 @@ func TestGetKinesisShardsFunc(t *testing.T) {
 			expectedUpdated:     true,
 		},
 		{
+			name:                "handles unsorted response",
+			oldShards:           "testdata/TestGetKinesisShardsFunc/unsorted/oldShards.json",
+			listShardsResponses: "testdata/TestGetKinesisShardsFunc/unsorted/listShardsResponses.json",
+			expectedShards:      "testdata/TestGetKinesisShardsFunc/unsorted/expectedShards.json",
+			expectedUpdated:     true,
+		},
+		{
 			name:                "returns false for equal shards",
 			oldShards:           "testdata/TestGetKinesisShardsFunc/equal_shards/oldShards.json",
 			listShardsResponses: "testdata/TestGetKinesisShardsFunc/equal_shards/listShardsResponses.json",
