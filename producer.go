@@ -76,26 +76,26 @@ func (p *Producer) PutUserRecord(userRecord UserRecord) error {
 		}
 	}()
 
-	recordSize := userRecord.Size()
-	if userRecord.Size() > maxRecordSize {
-		return userRecord.(*ErrRecordSizeExceeded)
-	}
-
 	partitionKey := userRecord.PartitionKey()
-	if l := len(partitionKey); l < 1 || l > 256 {
+	partitionKeySize := len(partitionKey)
+	if partitionKeySize < 1 || partitionKeySize > 256 {
 		return userRecord.(*ErrIllegalPartitionKey)
 	}
 
-	var (
-		nbytes = recordSize + len([]byte(partitionKey))
+	// Kinesis counts partition key size towards size limits
+	recordSize := userRecord.Size() + partitionKeySize
+	if recordSize > maxRecordSize {
+		return userRecord.(*ErrRecordSizeExceeded)
+	}
 
+	var (
 		record *AggregatedRecordRequest
 		err    error
 	)
 	// if the record size is bigger than aggregation size
 	// handle it as a simple kinesis record
 	// TODO: this logic is not enforced when doing reaggreation after shard refresh
-	if nbytes > p.AggregateBatchSize {
+	if recordSize > p.AggregateBatchSize {
 		record = NewAggregatedRecordRequest(userRecord.Data(), &partitionKey, nil, []UserRecord{userRecord})
 	} else {
 		record, err = p.shardMap.Put(userRecord)

@@ -349,40 +349,34 @@ func TestShardMapSize(t *testing.T) {
 	shardMap := NewShardMap(shards, 1)
 
 	require.Equal(t, 0, shardMap.Size())
-
-	drained, err := shardMap.Put(newTestUserRecord("foo", "100141183460469231731687303715884105727", mockData("", 10)))
+	record := newTestUserRecord("foo", "100141183460469231731687303715884105727", mockData("", 10))
+	drained, err := shardMap.Put(record)
 	require.Nil(t, drained)
 	require.Nil(t, err)
 
-	// record size + partitionKeySize + protobuf message index and wire type + partitionKeyIndexSize
-	expectedSize := 10 + 3 + 1 + partitionKeyIndexSize
+	expectedSize := calculateRecordFieldSize(0, record.Data()) + calculateStringFieldSize("foo")
 	require.Equal(t, expectedSize, shardMap.Size())
 
-	drained, err = shardMap.Put(newTestUserRecord("bar", "210141183460469231731687303715884105727", mockData("", 20)))
+	record2 := newTestUserRecord("bar", "210141183460469231731687303715884105727", mockData("", 20))
+	drained, err = shardMap.Put(record2)
 	require.Nil(t, drained)
 	require.Nil(t, err)
 
 	{
-		// size from first agg
-		// record size + partitionKeySize + protobuf message index and wire type + partitionKeyIndexSize
-		expectedSize = 10 + 3 + 1 + partitionKeyIndexSize
-		// size from second agg
-		// record size + partitionKeySize + protobuf message index and wire type + partitionKeyIndexSize
-		expectedSize += 20 + 3 + 1 + partitionKeyIndexSize
+		expectedSize = calculateRecordFieldSize(0, record.Data()) + calculateStringFieldSize("foo")
+		expectedSize += calculateRecordFieldSize(0, record2.Data()) + calculateStringFieldSize("bar")
 	}
 	require.Equal(t, expectedSize, shardMap.Size())
 
-	drained, err = shardMap.Put(newTestUserRecord("foo", "100141183460469231731687303715884105727", mockData("", 20)))
+	record3 := newTestUserRecord("foo", "100141183460469231731687303715884105727", mockData("", 20))
+	drained, err = shardMap.Put(record3)
 	require.NotNil(t, drained)
 	require.Nil(t, err)
 
 	{
-		// size from first agg
-		// record size + partitionKeySize + protobuf message index and wire type + partitionKeyIndexSize
-		expectedSize = 20 + 3 + 1 + partitionKeyIndexSize
-		// size from second agg
-		// record size + partitionKeySize + protobuf message index and wire type + partitionKeyIndexSize
-		expectedSize += 20 + 3 + 1 + partitionKeyIndexSize
+		// record1 drained on put of record3 so don't include in size
+		expectedSize = calculateRecordFieldSize(0, record2.Data()) + calculateStringFieldSize("bar")
+		expectedSize += calculateRecordFieldSize(0, record3.Data()) + calculateStringFieldSize("foo")
 	}
 	require.Equal(t, expectedSize, shardMap.Size())
 

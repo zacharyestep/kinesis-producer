@@ -115,8 +115,20 @@ func (a *Aggregator) Drain() (*AggregatedRecordRequest, error) {
 // WillOverflow checks if the aggregator will exceed max record size by attempting to Put
 // the user record. If true, the aggregator should be drained before attempting a Put.
 func (a *Aggregator) WillOverflow(userRecord UserRecord) bool {
-	nbytes, _ := a.userRecordNBytes(userRecord)
-	size := len(magicNumber) + a.Size() + nbytes + md5.Size
+	if a.nbytes == 0 {
+		return false
+	}
+
+	newbytes, _ := a.userRecordNBytes(userRecord)
+
+	size := len(magicNumber)
+	size += a.nbytes
+	size += newbytes
+	size += md5.Size
+	// need to also add length of partition key that will be sent in the
+	// kinesis.PutRecordsRequestEntry
+	size += len(a.pkeys[0])
+
 	return size > maxRecordSize
 }
 
@@ -125,20 +137,24 @@ func (a *Aggregator) WillOverflow(userRecord UserRecord) bool {
 // partition key is included in the results.
 func (a *Aggregator) userRecordNBytes(userRecord UserRecord) (int, bool) {
 	var (
-		nbytes         int
-		includesPkSize bool
+		nbytes            int
+		partitionKeyIndex int
+		includesPkSize    bool
 	)
 
-	// protobuf message index and wire type
-	nbytes += 1
-	nbytes += partitionKeyIndexSize
-	nbytes += userRecord.Size()
-
 	partitionKey := userRecord.PartitionKey()
-	if _, ok := a.pkeysIndex[partitionKey]; !ok {
-		nbytes += len([]byte(partitionKey))
+	if index, ok := a.pkeysIndex[partitionKey]; ok {
+		partitionKeyIndex = index
+	} else {
+		// partition key was not found, so we must add the additional size of adding
+		// the repeated field to the AggregatedRecord for the new key
+		nbytes += calculateStringFieldSize(partitionKey)
 		includesPkSize = true
+		partitionKeyIndex = len(a.pkeys)
 	}
+
+	nbytes += calculateRecordFieldSize(partitionKeyIndex, userRecord.Data())
+
 	return nbytes, includesPkSize
 }
 
@@ -161,4 +177,62 @@ func (a *Aggregator) clear() {
 	a.pkeys = make([]string, 0)
 	a.pkeysIndex = make(map[string]int, 0)
 	a.nbytes = 0
+}
+
+func calculateRecordFieldSize(keyIndex int, data []byte) (size int) {
+	recordBytes := calculateUint64FieldSize(uint64(keyIndex))
+	recordBytes += calculateBytesFieldSize(data)
+
+	// protobuf message index and wire type for Record
+	size += 1
+	size += calculateVarIntSize(uint64(recordBytes))
+	size += recordBytes
+	return
+}
+
+func calculateStringFieldSize(val string) (size int) {
+	strLen := len(val)
+	// protobuf message index and wire type
+	size += 1
+	size += calculateVarIntSize(uint64(strLen))
+	size += strLen
+	return
+}
+
+func calculateBytesFieldSize(val []byte) (size int) {
+	dataLen := len(val)
+	// protobuf message index and wire type
+	size += 1
+	size += calculateVarIntSize(uint64(dataLen))
+	size += dataLen
+	return
+}
+
+func calculateUint64FieldSize(val uint64) (size int) {
+	// protobuf message index and wire type
+	size += 1
+	size += calculateVarIntSize(val)
+	return
+}
+
+func calculateVarIntSize(val uint64) (size int) {
+	if val == 0 {
+		size = 1
+		return
+	}
+
+	var bitsNeeded int
+
+	for val > 0 {
+		bitsNeeded++
+		val = val >> 1
+	}
+
+	// varints use 7 bits of the byte for the value
+	// see https://developers.google.com/protocol-buffers/docs/encoding
+	size = bitsNeeded / 7
+	if bitsNeeded%7 > 0 {
+		size++
+	}
+	return
 }
