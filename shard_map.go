@@ -265,8 +265,6 @@ func (m *ShardMap) put(userRecord UserRecord) (*AggregatedRecordRequest, error) 
 	a := m.aggregators[bucket]
 	a.Lock()
 	var (
-		// nbytes       = userRecord.Size() + len([]byte(userRecord.PartitionKey()))
-		// sizeAfterPut = nbytes + a.Size() + md5.Size + len(magicNumber) + partitionKeyIndexSize
 		needToDrain = a.WillOverflow(userRecord) || a.Count() >= m.aggregateBatchCount
 
 		drained *AggregatedRecordRequest

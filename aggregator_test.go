@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
-	"math/rand"
 	"strconv"
 	"testing"
 
@@ -18,40 +17,33 @@ func TestSizeAndCount(t *testing.T) {
 	require.Equal(t, 0, a.Size()+a.Count(), "size and count should equal to 0 at the beginning")
 
 	var (
-		data             = []byte("hello")
-		keyCount         = rand.Intn(10) + 1
-		keys             = make([]string, keyCount)
-		totalKeySize     = 0
-		n                = rand.Intn(100) + 1
-		totalRecordCount = n * keyCount
+		keyCount      = 100
+		recordsPerKey = 10
+
+		keySize = 32
+		// message wire/index type + varint of keysize + keysize
+		keySizeProto = 1 + 1 + keySize
+
+		keyIndexSizeProto = 1 + 1
+		dataSize          = 512
+		// message wire/index type + varint of datasize + datasize
+		dataSizeProto = 1 + 2 + dataSize
+
+		recordSizeProto = 1 + 2 + keyIndexSizeProto + dataSizeProto
+
+		expectedCount = keyCount * recordsPerKey
+		expectedSize  = (keySizeProto * keyCount) + (recordSizeProto * expectedCount)
 	)
 
-	// setup multiple keys
-	for i := 0; i < keyCount; i++ {
-		keys[i] = fmt.Sprintf("world-%d", i)
-		totalKeySize += len([]byte(keys[i]))
-	}
-
-	for i := 0; i < n; i++ {
-		for k := 0; k < keyCount; k++ {
-			a.Put(NewDataRecord(data, keys[k]))
+	for k := 0; k < keyCount; k++ {
+		key := fmt.Sprintf("%0[2]*[1]d", k, keySize)
+		for i := 0; i < recordsPerKey; i++ {
+			a.Put(NewDataRecord(make([]byte, dataSize), key))
 		}
 	}
 
-	var expectedSize int
-	{
-		// plus protobuf message index and wire type per UserRecord
-		expectedSize += totalRecordCount
-		// plus size of partition keys.
-		expectedSize += totalKeySize
-		// plus size of data per UserRecord
-		expectedSize += len(data) * totalRecordCount
-		// plus size of partition key index per UserRecord
-		expectedSize += 8 * totalRecordCount
-	}
-
+	require.Equal(t, expectedCount, a.Count(), "count should be equal to the number of Put calls")
 	require.Equal(t, expectedSize, a.Size(), "size should equal to size of data, partition-keys, partition key indexes, and protobuf wire type")
-	require.Equal(t, totalRecordCount, a.Count(), "count should be equal to the number of Put calls")
 }
 
 func TestAggregation(t *testing.T) {
@@ -160,22 +152,4 @@ func TestAggregatorWillOverflow(t *testing.T) {
 	a.Put(record)
 	record = NewDataRecord(mockData("", maxRecordSize/2), "foo")
 	require.True(t, a.WillOverflow(record))
-}
-
-func TestAggregatorUserRecordNBytes(t *testing.T) {
-	a := NewAggregator(nil)
-
-	record := NewDataRecord(mockData("", 10), "foo")
-	nbytes, includesPk := a.userRecordNBytes(record)
-	expectedNBytes := 1 + partitionKeyIndexSize + 10 + 3
-	require.Equal(t, expectedNBytes, nbytes)
-	require.True(t, includesPk)
-
-	a.Put(record)
-
-	record = NewDataRecord(mockData("", 20), "foo")
-	nbytes, includesPk = a.userRecordNBytes(record)
-	expectedNBytes = 1 + partitionKeyIndexSize + 20
-	require.Equal(t, expectedNBytes, nbytes)
-	require.False(t, includesPk)
 }
