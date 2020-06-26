@@ -72,6 +72,7 @@ package main
 import (
 	"time"
 
+	"github.com/a8m/kinesis-producer"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
@@ -80,11 +81,11 @@ import (
 
 func main() {
 	client := kinesis.New(session.New(aws.NewConfig()))
-	pr := New(&Config{
+	pr := producer.New(&producer.Config{
 		StreamName:           "test",
 		BacklogCount:         2000,
 		Client:               client,
-		GetShards:            GetKinesisShardsFunc(client, "test"),
+		GetShards:            producer.GetKinesisShardsFunc(client, "test"),
 		ShardRefreshInterval: 5 * time.Second,
 	})
 
@@ -130,6 +131,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/a8m/kinesis-producer"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
@@ -164,11 +166,11 @@ func newMyExampleUserRecord(key, val string) (*myExampleUserRecord, error) {
 
 func main() {
 	client := kinesis.New(session.New(aws.NewConfig()))
-	pr := New(&Config{
+	pr := producer.New(&producer.Config{
 		StreamName:           "test",
 		BacklogCount:         2000,
 		Client:               client,
-		GetShards:            GetKinesisShardsFunc(client, "test"),
+		GetShards:            producer.GetKinesisShardsFunc(client, "test"),
 		ShardRefreshInterval: 5 * time.Second,
 	})
 
