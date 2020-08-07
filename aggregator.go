@@ -4,9 +4,9 @@ import (
 	"crypto/md5"
 	"sync"
 
-	"github.com/a8m/kinesis-producer/pb"
 	k "github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/golang/protobuf/proto"
+	"github.com/mjneil/kinesis-producer/pb"
 )
 
 var (

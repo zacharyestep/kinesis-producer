@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/a8m/kinesis-producer/deaggregation"
 	k "github.com/aws/aws-sdk-go/service/kinesis"
+	"github.com/mjneil/kinesis-producer/deaggregation"
 	"github.com/stretchr/testify/require"
 )
 
