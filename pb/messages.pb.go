@@ -3,7 +3,7 @@
 // DO NOT EDIT!
 
 /*
-Package producer is a generated protocol buffer package.
+Package pb is a generated protocol buffer package.
 
 It is generated from these files:
 	messages.proto
@@ -13,7 +13,7 @@ It has these top-level messages:
 	Tag
 	Record
 */
-package producer
+package pb
 
 import proto "github.com/golang/protobuf/proto"
 import fmt "fmt"
@@ -128,9 +128,9 @@ func (m *Record) GetTags() []*Tag {
 }
 
 func init() {
-	proto.RegisterType((*AggregatedRecord)(nil), "producer.AggregatedRecord")
-	proto.RegisterType((*Tag)(nil), "producer.Tag")
-	proto.RegisterType((*Record)(nil), "producer.Record")
+	proto.RegisterType((*AggregatedRecord)(nil), "pb.AggregatedRecord")
+	proto.RegisterType((*Tag)(nil), "pb.Tag")
+	proto.RegisterType((*Record)(nil), "pb.Record")
 }
 
 var fileDescriptor0 = []byte{
