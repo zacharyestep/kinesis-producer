@@ -1,14 +1,12 @@
 package producer
 
 import (
-	"bytes"
-	"crypto/md5"
 	"fmt"
 	"strconv"
 	"testing"
 
+	"github.com/a8m/kinesis-producer/deaggregation"
 	k "github.com/aws/aws-sdk-go/service/kinesis"
-	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -92,7 +90,7 @@ func TestAggregation(t *testing.T) {
 			}
 
 			require.Equal(t, 0, a.Size()+a.Count(), "size and count should be cleared on drain")
-			require.True(t, isAggregated(record.Entry), "should return an agregated record")
+			require.True(t, deaggregation.IsAggregatedRecord(record.Entry.Data), "should return an agregated record")
 			require.Equal(t, "0", *record.Entry.PartitionKey, "Entry should user first PartitionKey")
 			if explicitHashKey == nil {
 				require.Nil(t, record.Entry.ExplicitHashKey)
@@ -121,15 +119,8 @@ func TestAggregation(t *testing.T) {
 	}
 }
 
-// Test if a given entry is aggregated record.
-func isAggregated(entry *k.PutRecordsRequestEntry) bool {
-	return bytes.HasPrefix(entry.Data, magicNumber)
-}
-
 func extractRecords(entry *k.PutRecordsRequestEntry) (out []*k.PutRecordsRequestEntry) {
-	src := entry.Data[len(magicNumber) : len(entry.Data)-md5.Size]
-	dest := new(AggregatedRecord)
-	err := proto.Unmarshal(src, dest)
+	dest, err := deaggregation.Unmarshal(entry.Data)
 	if err != nil {
 		return
 	}

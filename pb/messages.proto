@@ -1,4 +1,4 @@
-package producer;
+package pb;
 
 message AggregatedRecord {
   repeated string partition_key_table     = 1;

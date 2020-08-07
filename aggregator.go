@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"sync"
 
+	"github.com/a8m/kinesis-producer/pb"
 	k "github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/golang/protobuf/proto"
 )
@@ -86,7 +87,7 @@ func (a *Aggregator) Drain() (*AggregatedRecordRequest, error) {
 		return nil, nil
 	}
 
-	data, err := proto.Marshal(&AggregatedRecord{
+	data, err := proto.Marshal(&pb.AggregatedRecord{
 		PartitionKeyTable: a.pkeys,
 		Records:           a.aggregateUserRecords(),
 	})
@@ -158,13 +159,13 @@ func (a *Aggregator) userRecordNBytes(userRecord UserRecord) (int, bool) {
 	return nbytes, includesPkSize
 }
 
-func (a *Aggregator) aggregateUserRecords() []*Record {
+func (a *Aggregator) aggregateUserRecords() []*pb.Record {
 	count := len(a.buf)
-	records := make([]*Record, count)
+	records := make([]*pb.Record, count)
 	for i := 0; i < count; i++ {
 		userRecord := a.buf[i]
 		keyIndex := uint64(a.pkeysIndex[userRecord.PartitionKey()])
-		records[i] = &Record{
+		records[i] = &pb.Record{
 			Data:              userRecord.Data(),
 			PartitionKeyIndex: &keyIndex,
 		}
