@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 	"github.com/mjneil/kinesis-producer/pb"
 )
 

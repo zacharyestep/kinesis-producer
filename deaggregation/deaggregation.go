@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"crypto/md5"
 
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 	"github.com/mjneil/kinesis-producer/pb"
 )
 
