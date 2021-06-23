@@ -1,4 +1,7 @@
-package producer;
+syntax = "proto2";
+package pb;
+
+option go_package = "github.com/fhaze/kinesis-producer/pb";
 
 message AggregatedRecord {
   repeated string partition_key_table     = 1;

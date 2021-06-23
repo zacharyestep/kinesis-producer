@@ -1,0 +1,12 @@
+[
+    {
+        "ShardId": "shardId-000000000000",
+        "HashKeyRange": {
+            "StartingHashKey": "0",
+            "EndingHashKey": "340282366920938463463374607431768211455"
+        },
+        "SequenceNumberRange": {
+            "StartingSequenceNumber": "49595968993647867597933217504568283421571430797549764610"
+        }
+    }
+]

@@ -15,8 +15,16 @@ func (s semaphore) release() {
 }
 
 // wait block until the last goroutine release the lock
-func (s semaphore) wait() {
-	for i := 0; i < cap(s); i++ {
+func (s semaphore) wait(count int) {
+	for i := 0; i < count; i++ {
 		s <- struct{}{}
+	}
+}
+
+// releases the semaphore for use again after a wait call
+// only use this after calling wait()
+func (s semaphore) open(count int) {
+	for i := 0; i < count; i++ {
+		<-s
 	}
 }
