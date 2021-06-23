@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/fhaze/kinesis-producer/pb"
 	"google.golang.org/protobuf/proto"
-	"github.com/mjneil/kinesis-producer/pb"
 )
 
 // IsAggregatedRecord judges "NotAggregatedRecord" is not AggregatedRecord.

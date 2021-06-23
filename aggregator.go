@@ -5,8 +5,8 @@ import (
 	"sync"
 
 	k "github.com/aws/aws-sdk-go/service/kinesis"
+	"github.com/fhaze/kinesis-producer/pb"
 	"github.com/golang/protobuf/proto"
-	"github.com/mjneil/kinesis-producer/pb"
 )
 
 var (

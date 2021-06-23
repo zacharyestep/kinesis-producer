@@ -6,8 +6,8 @@ import (
 	"bytes"
 	"crypto/md5"
 
+	"github.com/fhaze/kinesis-producer/pb"
 	"google.golang.org/protobuf/proto"
-	"github.com/mjneil/kinesis-producer/pb"
 )
 
 var magicNumber = []byte{0xF3, 0x89, 0x9A, 0xC2}

@@ -1,4 +1,4 @@
-module github.com/mjneil/kinesis-producer
+module github.com/fhaze/kinesis-producer
 
 require (
 	github.com/aws/aws-sdk-go v1.21.10

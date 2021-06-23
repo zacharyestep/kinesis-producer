@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	k "github.com/aws/aws-sdk-go/service/kinesis"
-	"github.com/mjneil/kinesis-producer/deaggregation"
+	"github.com/fhaze/kinesis-producer/deaggregation"
 	"github.com/stretchr/testify/require"
 )
 
