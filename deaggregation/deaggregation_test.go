@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/fhaze/kinesis-producer/pb"
+	"github.com/achunariov/kinesis-producer/pb"
 	"google.golang.org/protobuf/proto"
 )
 

@@ -2,11 +2,12 @@ package producer
 
 import (
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"strconv"
 	"testing"
 
+	"github.com/achunariov/kinesis-producer/deaggregation"
 	k "github.com/aws/aws-sdk-go/service/kinesis"
-	"github.com/fhaze/kinesis-producer/deaggregation"
 	"github.com/stretchr/testify/require"
 )
 
@@ -119,7 +120,7 @@ func TestAggregation(t *testing.T) {
 	}
 }
 
-func extractRecords(entry *k.PutRecordsRequestEntry) (out []*k.PutRecordsRequestEntry) {
+func extractRecords(entry types.PutRecordsRequestEntry) (out []*k.PutRecordsRequestEntry) {
 	dest, err := deaggregation.Unmarshal(entry.Data)
 	if err != nil {
 		return

@@ -1,11 +1,13 @@
 package producer
 
 import (
+	"context"
 	"log"
 	"os"
 	"time"
 
-	k "github.com/aws/aws-sdk-go/service/kinesis"
+	k "github.com/aws/aws-sdk-go-v2/service/kinesis"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 )
 
 // Constants and default configuration take from:
@@ -24,7 +26,7 @@ const (
 
 // Putter is the interface that wraps the KinesisAPI.PutRecords method.
 type Putter interface {
-	PutRecords(*k.PutRecordsInput) (*k.PutRecordsOutput, error)
+	PutRecords(ctx context.Context, params *k.PutRecordsInput, optFns ...func(*k.Options)) (*k.PutRecordsOutput, error)
 }
 
 // GetShardsFunc is called to populate the shard map on initialization and during refresh
@@ -32,9 +34,9 @@ type Putter interface {
 // initialization, this will be nil. GetShardsFunc should return a shard list, a bool
 // indicating if the shards should be updated and an error. If false bool or error is
 // returned, shards will not be updated.
-type GetShardsFunc func(old []*k.Shard) ([]*k.Shard, bool, error)
+type GetShardsFunc func(old []types.Shard) ([]types.Shard, bool, error)
 
-func defaultGetShardsFunc(old []*k.Shard) ([]*k.Shard, bool, error) { return nil, false, nil }
+func defaultGetShardsFunc(old []types.Shard) ([]types.Shard, bool, error) { return nil, false, nil }
 
 // Config is the Producer configuration.
 type Config struct {

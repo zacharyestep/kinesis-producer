@@ -1,6 +1,7 @@
 package producer
 
 import (
+	"context"
 	"errors"
 	"math/big"
 	"math/rand"
@@ -8,8 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
-	k "github.com/aws/aws-sdk-go/service/kinesis"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	k "github.com/aws/aws-sdk-go-v2/service/kinesis"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -100,7 +102,7 @@ func TestShardMapPut(t *testing.T) {
 			},
 			postDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{},
+					Entry: types.PutRecordsRequestEntry{},
 					UserRecords: []UserRecord{
 						newTestUserRecord("foo", "", []byte("hello")),
 						newTestUserRecord("foo", "", []byte("hello")),
@@ -118,7 +120,7 @@ func TestShardMapPut(t *testing.T) {
 			},
 			putDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{},
+					Entry: types.PutRecordsRequestEntry{},
 					UserRecords: []UserRecord{
 						newTestUserRecord("foo", "", []byte("hello")),
 					},
@@ -126,7 +128,7 @@ func TestShardMapPut(t *testing.T) {
 			},
 			postDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{},
+					Entry: types.PutRecordsRequestEntry{},
 					UserRecords: []UserRecord{
 						newTestUserRecord("foo", "", []byte("hello")),
 					},
@@ -145,7 +147,7 @@ func TestShardMapPut(t *testing.T) {
 			},
 			putDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{},
+					Entry: types.PutRecordsRequestEntry{},
 					UserRecords: []UserRecord{
 						newTestUserRecord("foo", "", mockData("hello", (maxRecordSize-100)/3)),
 						newTestUserRecord("foo", "", mockData("hello", (maxRecordSize-100)/3)),
@@ -155,7 +157,7 @@ func TestShardMapPut(t *testing.T) {
 			},
 			postDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{},
+					Entry: types.PutRecordsRequestEntry{},
 					UserRecords: []UserRecord{
 						newTestUserRecord("foo", "", mockData("hello", (maxRecordSize-100)/3)),
 					},
@@ -175,7 +177,7 @@ func TestShardMapPut(t *testing.T) {
 			},
 			putDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -187,7 +189,7 @@ func TestShardMapPut(t *testing.T) {
 			},
 			postDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -196,7 +198,7 @@ func TestShardMapPut(t *testing.T) {
 					},
 				},
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of second shard
 						ExplicitHashKey: aws.String("170141183460469231731687303715884105727"),
 					},
@@ -222,7 +224,7 @@ func TestShardMapPut(t *testing.T) {
 			},
 			putDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -234,7 +236,7 @@ func TestShardMapPut(t *testing.T) {
 			},
 			postDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -243,7 +245,7 @@ func TestShardMapPut(t *testing.T) {
 					},
 				},
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of second shard
 						ExplicitHashKey: aws.String("170141183460469231731687303715884105727"),
 					},
@@ -474,7 +476,7 @@ type mockShardLister struct {
 	next       *string
 }
 
-func (m *mockShardLister) ListShards(input *k.ListShardsInput) (*k.ListShardsOutput, error) {
+func (m *mockShardLister) ListShards(ctx context.Context, input *k.ListShardsInput, optFns ...func(*k.Options)) (*k.ListShardsOutput, error) {
 	m.callCount++
 	if m.callCount > len(m.responses) {
 		return nil, errors.New("ListShards error")
@@ -558,8 +560,8 @@ func TestGetKinesisShardsFunc(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var (
 				listShardsResponses []*k.ListShardsOutput
-				oldShards           []*k.Shard
-				expectedShards      []*k.Shard
+				oldShards           []types.Shard
+				expectedShards      []types.Shard
 			)
 
 			if tc.listShardsResponses != "" {
@@ -568,12 +570,12 @@ func TestGetKinesisShardsFunc(t *testing.T) {
 			}
 
 			if tc.oldShards != "" {
-				oldShards = make([]*k.Shard, 0)
+				oldShards = make([]types.Shard, 0)
 				loadJSONFromFile(t, tc.oldShards, &oldShards)
 			}
 
 			if tc.expectedShards != "" {
-				expectedShards = make([]*k.Shard, 0)
+				expectedShards = make([]types.Shard, 0)
 				loadJSONFromFile(t, tc.expectedShards, &expectedShards)
 			}
 
@@ -623,7 +625,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 			newShards: "testdata/TestShardMapUpdateShards/error_pending_put/newShards.json",
 			pendingRecords: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of second shard
 						ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
 					},
@@ -635,7 +637,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 			},
 			updateDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of second shard
 						ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
 					},
@@ -647,7 +649,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 			},
 			postDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -657,7 +659,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 					},
 				},
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of second shard
 						ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
 					},
@@ -680,7 +682,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 			newShards: "testdata/TestShardMapUpdateShards/error_agg_put/newShards.json",
 			pendingRecords: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of second shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -692,7 +694,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 			},
 			updateDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of second shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -704,7 +706,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 			},
 			postDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -714,7 +716,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 					},
 				},
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of second shard
 						ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
 					},
@@ -738,7 +740,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 		// 	getShardsUpdated: false,
 		// 	postDrained: []*AggregatedRecordRequest{
 		// 		&AggregatedRecordRequest{
-		// 			Entry: &k.PutRecordsRequestEntry{
+		// 			Entry: types.PutRecordsRequestEntry{
 		// 				// StartingHashKey of first shard
 		// 				ExplicitHashKey: aws.String("0"),
 		// 			},
@@ -748,7 +750,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 		// 			},
 		// 		},
 		// 		&AggregatedRecordRequest{
-		// 			Entry: &k.PutRecordsRequestEntry{
+		// 			Entry: types.PutRecordsRequestEntry{
 		// 				// StartingHashKey of second shard
 		// 				ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
 		// 			},
@@ -772,7 +774,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 			newShards: "testdata/TestShardMapUpdateShards/update/newShards.json",
 			pendingRecords: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -782,7 +784,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 					},
 				},
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of second shard
 						ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
 					},
@@ -794,7 +796,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 			},
 			postDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -806,7 +808,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 					},
 				},
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of second shard
 						ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
 					},
@@ -832,7 +834,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 			newShards: "testdata/TestShardMapUpdateShards/update_drained/newShards.json",
 			pendingRecords: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -841,7 +843,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 					},
 				},
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of second shard
 						ExplicitHashKey: aws.String("170141183460469231731687303715884105728"),
 					},
@@ -852,7 +854,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 			},
 			updateDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -862,7 +864,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 					},
 				},
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -874,7 +876,7 @@ func TestShardMapUpdateShards(t *testing.T) {
 			},
 			postDrained: []*AggregatedRecordRequest{
 				&AggregatedRecordRequest{
-					Entry: &k.PutRecordsRequestEntry{
+					Entry: types.PutRecordsRequestEntry{
 						// StartingHashKey of first shard
 						ExplicitHashKey: aws.String("0"),
 					},
@@ -890,10 +892,10 @@ func TestShardMapUpdateShards(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			var (
-				startingShards []*k.Shard
+				startingShards []types.Shard
 			)
 			if tc.startingShards != "" {
-				startingShards = make([]*k.Shard, 0)
+				startingShards = make([]types.Shard, 0)
 				loadJSONFromFile(t, tc.startingShards, &startingShards)
 			}
 
@@ -905,9 +907,9 @@ func TestShardMapUpdateShards(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			var newShards []*k.Shard
+			var newShards []types.Shard
 			if tc.newShards != "" {
-				newShards = make([]*k.Shard, 0)
+				newShards = make([]types.Shard, 0)
 				loadJSONFromFile(t, tc.newShards, &newShards)
 			}
 
