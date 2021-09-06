@@ -125,7 +125,11 @@ func (wp *WorkerPool) loop() {
 	// prepend work item to start of inflight buffer. Work that needs to be retried is
 	// prepended for prioritization over new work
 	prepend := func(work *Work) {
-		inflight = append([]*Work{work}, inflight...)
+		inf := make([]*Work, len(inflight)+1)
+		inf[0] = work
+		copy(inf[1:], inflight)
+		inflight = nil
+		inflight = inf
 	}
 
 	do := func(work *Work) {
