@@ -1,28 +1,30 @@
 package producer
 
 import (
+	"context"
 	"crypto/md5"
 	"math/big"
 	"sort"
 	"sync"
 
-	k "github.com/aws/aws-sdk-go/service/kinesis"
+	k "github.com/aws/aws-sdk-go-v2/service/kinesis"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 )
 
 // 2^128 exclusive upper bound
 // Hash key ranges are 0 indexed, so true max is 2^128 - 1
-const maxHashKeyRange = "340282366920938463463374607431768211455"
+var maxHashKeyRange = "340282366920938463463374607431768211455"
 
 // ShardLister is the interface that wraps the KinesisAPI.ListShards method.
 type ShardLister interface {
-	ListShards(input *k.ListShardsInput) (*k.ListShardsOutput, error)
+	ListShards(ctx context.Context, params *k.ListShardsInput, optFns ...func(*k.Options)) (*k.ListShardsOutput, error)
 }
 
 // GetKinesisShardsFunc gets the active list of shards from Kinesis.ListShards API
 func GetKinesisShardsFunc(client ShardLister, streamName string) GetShardsFunc {
-	return func(old []*k.Shard) ([]*k.Shard, bool, error) {
+	return func(old []types.Shard) ([]types.Shard, bool, error) {
 		var (
-			shards []*k.Shard
+			shards []types.Shard
 			next   *string
 		)
 
@@ -34,7 +36,7 @@ func GetKinesisShardsFunc(client ShardLister, streamName string) GetShardsFunc {
 				input.StreamName = &streamName
 			}
 
-			resp, err := client.ListShards(input)
+			resp, err := client.ListShards(context.Background(), input)
 			if err != nil {
 				return nil, false, err
 			}
@@ -66,7 +68,7 @@ func GetKinesisShardsFunc(client ShardLister, streamName string) GetShardsFunc {
 // StaticGetShardsFunc returns a GetShardsFunc that when called, will generate a static
 // list of shards with length count whos HashKeyRanges are evenly distributed
 func StaticGetShardsFunc(count int) GetShardsFunc {
-	return func(old []*k.Shard) ([]*k.Shard, bool, error) {
+	return func(old []types.Shard) ([]types.Shard, bool, error) {
 		if count == 0 {
 			return nil, false, nil
 		}
@@ -77,33 +79,32 @@ func StaticGetShardsFunc(count int) GetShardsFunc {
 		step = step.Div(step, bCount)
 		b1 := big.NewInt(int64(1))
 
-		shards := make([]*k.Shard, count)
+		shards := make([]types.Shard, count)
 		key := big.NewInt(int64(0))
 		for i := 0; i < count; i++ {
-			shard := new(k.Shard)
-			hkRange := new(k.HashKeyRange)
-
 			bI := big.NewInt(int64(i))
 			// starting key range (step * i)
 			key = key.Mul(bI, step)
-			hkRange = hkRange.SetStartingHashKey(key.String())
+			startingHashKey := key.String()
+
 			// ending key range ((step * (i + 1)) - 1)
 			bINext := big.NewInt(int64(i + 1))
 			key = key.Mul(bINext, step)
 			key = key.Sub(key, b1)
-			hkRange = hkRange.SetEndingHashKey(key.String())
+			endingHashKey := key.String()
 
-			// TODO: Is setting other shard properties necessary?
-			shard = shard.SetHashKeyRange(hkRange)
-			shards[i] = shard
+			shards[i].HashKeyRange = &types.HashKeyRange{
+				StartingHashKey: &startingHashKey,
+				EndingHashKey:   &endingHashKey,
+			}
 		}
 		// Set last shard end range to max to account for small rounding errors
-		shards[len(shards)-1].HashKeyRange.SetEndingHashKey(maxHashKeyRange)
+		shards[len(shards)-1].HashKeyRange.EndingHashKey = &maxHashKeyRange
 		return shards, false, nil
 	}
 }
 
-type ShardSlice []*k.Shard
+type ShardSlice []types.Shard
 
 func (p ShardSlice) Len() int { return len(p) }
 func (p ShardSlice) Less(i, j int) bool {
@@ -115,7 +116,7 @@ func (p ShardSlice) Less(i, j int) bool {
 func (p ShardSlice) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
 // Checks to see if the shards have the same hash key ranges
-func shardsEqual(a, b []*k.Shard) bool {
+func shardsEqual(a, b []types.Shard) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -131,7 +132,7 @@ func shardsEqual(a, b []*k.Shard) bool {
 
 type ShardMap struct {
 	sync.RWMutex
-	shards      []*k.Shard
+	shards      []types.Shard
 	aggregators []*Aggregator
 	// aggregateBatchCount determine the maximum number of items to pack into an aggregated record.
 	aggregateBatchCount int
@@ -144,7 +145,7 @@ type ShardMap struct {
 // A ShardMap with an empty shards slice will return to unsharded behavior with a single
 // aggregator. The aggregator will instead use the PartitionKey of the first UserRecord and
 // no ExplicitHashKey.
-func NewShardMap(shards []*k.Shard, aggregateBatchCount int) *ShardMap {
+func NewShardMap(shards []types.Shard, aggregateBatchCount int) *ShardMap {
 	return &ShardMap{
 		shards:              shards,
 		aggregators:         makeAggregators(shards),
@@ -197,7 +198,7 @@ func (m *ShardMap) Drain() ([]*AggregatedRecordRequest, []error) {
 }
 
 // Shards returns the list of shards
-func (m *ShardMap) Shards() []*k.Shard {
+func (m *ShardMap) Shards() []types.Shard {
 	m.RLock()
 	shards := m.shards
 	m.RUnlock()
@@ -214,7 +215,7 @@ func (m *ShardMap) Shards() []*k.Shard {
 //			 it out since we retain original partition keys (but not explicit hash keys)
 //			 Shard merging should not be an issue since records from both shards should fall
 //			 into the merged hash key range.
-func (m *ShardMap) UpdateShards(shards []*k.Shard, pendingRecords []*AggregatedRecordRequest) ([]*AggregatedRecordRequest, error) {
+func (m *ShardMap) UpdateShards(shards []types.Shard, pendingRecords []*AggregatedRecordRequest) ([]*AggregatedRecordRequest, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -328,7 +329,7 @@ func hashKey(pk string) *big.Int {
 	return hk
 }
 
-func makeAggregators(shards []*k.Shard) []*Aggregator {
+func makeAggregators(shards []types.Shard) []*Aggregator {
 	count := len(shards)
 	if count == 0 {
 		return []*Aggregator{NewAggregator(nil)}

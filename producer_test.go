@@ -1,16 +1,17 @@
 package producer
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/kinesis"
-	k "github.com/aws/aws-sdk-go/service/kinesis"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	k "github.com/aws/aws-sdk-go-v2/service/kinesis"
 	"github.com/google/uuid"
 )
 
@@ -25,7 +26,7 @@ type clientMock struct {
 	incoming  map[int][]string
 }
 
-func (c *clientMock) PutRecords(input *k.PutRecordsInput) (*k.PutRecordsOutput, error) {
+func (c *clientMock) PutRecords(ctx context.Context, input *k.PutRecordsInput, optFns ...func(*k.Options)) (*k.PutRecordsOutput, error) {
 	res := c.responses[c.calls]
 	for _, r := range input.Records {
 		c.incoming[c.calls] = append(c.incoming[c.calls], *r.PartitionKey)
@@ -66,7 +67,7 @@ var testCases = []testCase{
 				{
 					Error: nil,
 					Response: &k.PutRecordsOutput{
-						FailedRecordCount: aws.Int64(0),
+						FailedRecordCount: aws.Int32(0),
 					},
 				},
 			}},
@@ -84,13 +85,13 @@ var testCases = []testCase{
 				{
 					Error: nil,
 					Response: &k.PutRecordsOutput{
-						FailedRecordCount: aws.Int64(0),
+						FailedRecordCount: aws.Int32(0),
 					},
 				},
 				{
 					Error: nil,
 					Response: &k.PutRecordsOutput{
-						FailedRecordCount: aws.Int64(0),
+						FailedRecordCount: aws.Int32(0),
 					},
 				},
 			}},
@@ -109,8 +110,8 @@ var testCases = []testCase{
 				{
 					Error: nil,
 					Response: &k.PutRecordsOutput{
-						FailedRecordCount: aws.Int64(1),
-						Records: []*k.PutRecordsResultEntry{
+						FailedRecordCount: aws.Int32(1),
+						Records: []types.PutRecordsResultEntry{
 							{SequenceNumber: aws.String("3"), ShardId: aws.String("1")},
 							{ErrorCode: aws.String("400")},
 						},
@@ -119,7 +120,7 @@ var testCases = []testCase{
 				{
 					Error: nil,
 					Response: &k.PutRecordsOutput{
-						FailedRecordCount: aws.Int64(0),
+						FailedRecordCount: aws.Int32(0),
 					},
 				},
 			}},
@@ -138,13 +139,13 @@ var testCases = []testCase{
 				{
 					Error: nil,
 					Response: &k.PutRecordsOutput{
-						FailedRecordCount: aws.Int64(0),
+						FailedRecordCount: aws.Int32(0),
 					},
 				},
 				{
 					Error: nil,
 					Response: &k.PutRecordsOutput{
-						FailedRecordCount: aws.Int64(0),
+						FailedRecordCount: aws.Int32(0),
 					},
 				},
 			}},
@@ -248,9 +249,9 @@ func TestNotify(t *testing.T) {
 	}
 }
 
-func mockGetShards(startingShards, shards []*k.Shard, updated bool, err error) GetShardsFunc {
+func mockGetShards(startingShards, shards []types.Shard, updated bool, err error) GetShardsFunc {
 	calls := 0
-	return func(_ []*k.Shard) ([]*k.Shard, bool, error) {
+	return func(_ []types.Shard) ([]types.Shard, bool, error) {
 		calls++
 		switch calls {
 		case 1:
@@ -274,17 +275,17 @@ type mockThrottleClient struct {
 func (c *mockThrottleClient) PutRecords(input *k.PutRecordsInput) (*k.PutRecordsOutput, error) {
 	select {
 	case <-c.done:
-		failed := int64(0)
+		failed := int32(0)
 		return &k.PutRecordsOutput{
 			FailedRecordCount: &failed,
 		}, nil
 	default:
 		fmt.Println("put records throttle")
-		failed := int64(len(input.Records))
+		failed := int32(len(input.Records))
 		code := "errorcode"
-		var records []*kinesis.PutRecordsResultEntry
+		var records []types.PutRecordsResultEntry
 		for range input.Records {
-			records = append(records, &kinesis.PutRecordsResultEntry{
+			records = append(records, types.PutRecordsResultEntry{
 				ErrorCode: &code,
 			})
 		}
@@ -464,8 +465,8 @@ type mockBenchmarkClient struct {
 	b *testing.B
 }
 
-func (_ *mockBenchmarkClient) PutRecords(_ *k.PutRecordsInput) (*k.PutRecordsOutput, error) {
-	failed := int64(0)
+func (_ *mockBenchmarkClient) PutRecords(ctx context.Context, input *k.PutRecordsInput, optFns ...func(*k.Options)) (*k.PutRecordsOutput, error) {
+	failed := int32(0)
 	return &k.PutRecordsOutput{
 		FailedRecordCount: &failed,
 	}, nil

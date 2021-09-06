@@ -1,11 +1,13 @@
 package producer
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
 
-	k "github.com/aws/aws-sdk-go/service/kinesis"
+	k "github.com/aws/aws-sdk-go-v2/service/kinesis"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"github.com/jpillora/backoff"
 )
 
@@ -236,12 +238,12 @@ func (wp *WorkerPool) send(work *Work) *Work {
 	count := len(work.records)
 	wp.Logger.Info("flushing records", LogValue{"reason", work.reason}, LogValue{"records", count})
 
-	kinesisRecords := make([]*k.PutRecordsRequestEntry, count)
+	kinesisRecords := make([]types.PutRecordsRequestEntry, count)
 	for i := 0; i < count; i++ {
 		kinesisRecords[i] = work.records[i].Entry
 	}
 
-	out, err := wp.Client.PutRecords(&k.PutRecordsInput{
+	out, err := wp.Client.PutRecords(context.Background(), &k.PutRecordsInput{
 		StreamName: &wp.StreamName,
 		Records:    kinesisRecords,
 	})
@@ -299,8 +301,8 @@ func (wp *WorkerPool) send(work *Work) *Work {
 // failures returns the failed records as indicated in the response.
 func failures(
 	records []*AggregatedRecordRequest,
-	response []*k.PutRecordsResultEntry,
-	count int64,
+	response []types.PutRecordsResultEntry,
+	count int32,
 ) []*AggregatedRecordRequest {
 	out := make([]*AggregatedRecordRequest, 0, count)
 	for i, record := range response {

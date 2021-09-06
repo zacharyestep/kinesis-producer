@@ -7,15 +7,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/kinesis"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
 	"github.com/google/uuid"
 )
 
 func ExampleSimple() {
 	logger := &StdLogger{log.New(os.Stdout, "", log.LstdFlags)}
-	client := kinesis.New(session.New(aws.NewConfig()))
+	client := kinesis.NewFromConfig(*aws.NewConfig())
 	pr := New(&Config{
 		StreamName:   "test",
 		BacklogCount: 2000,
@@ -49,7 +48,7 @@ func ExampleSimple() {
 
 func ExampleShardMap() {
 	logger := &StdLogger{log.New(os.Stdout, "", log.LstdFlags)}
-	client := kinesis.New(session.New(aws.NewConfig()))
+	client := kinesis.NewFromConfig(*aws.NewConfig())
 	pr := New(&Config{
 		StreamName:           "test",
 		BacklogCount:         2000,
@@ -114,7 +113,7 @@ func newMyExampleUserRecord(key, val string) (*myExampleUserRecord, error) {
 
 func ExampleUserRecord() {
 	logger := &StdLogger{log.New(os.Stdout, "", log.LstdFlags)}
-	client := kinesis.New(session.New(aws.NewConfig()))
+	client := kinesis.NewFromConfig(*aws.NewConfig())
 	pr := New(&Config{
 		StreamName:           "test",
 		BacklogCount:         2000,

@@ -4,8 +4,8 @@ import (
 	"crypto/md5"
 	"sync"
 
-	k "github.com/aws/aws-sdk-go/service/kinesis"
-	"github.com/fhaze/kinesis-producer/pb"
+	"github.com/achunariov/kinesis-producer/pb"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"github.com/golang/protobuf/proto"
 )
 
@@ -16,13 +16,13 @@ var (
 // Contains the AWS Kinesis PutRecordsRequestEntry and UserRecords that are aggregated into
 // the request. UserRecords are provided for more control over failure notifications
 type AggregatedRecordRequest struct {
-	Entry       *k.PutRecordsRequestEntry
+	Entry       types.PutRecordsRequestEntry
 	UserRecords []UserRecord
 }
 
 func NewAggregatedRecordRequest(data []byte, partitionKey, explicitHashKey *string, userRecords []UserRecord) *AggregatedRecordRequest {
 	return &AggregatedRecordRequest{
-		Entry: &k.PutRecordsRequestEntry{
+		Entry: types.PutRecordsRequestEntry{
 			Data:            data,
 			PartitionKey:    partitionKey,
 			ExplicitHashKey: explicitHashKey,
