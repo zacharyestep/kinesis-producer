@@ -92,12 +92,20 @@ func (wp *WorkerPool) loop() {
 		inflight    []*Work   = nil
 		retry                 = make(chan *Work)
 		size                  = 0
+		idleConns             = 0
 		connections semaphore = make(chan struct{}, wp.MaxConnections)
 		closed      semaphore = make(chan struct{}, wp.MaxConnections)
 	)
 
 	// create new work item from buffer and append to inflight work
 	flushBuf := func(reason string) {
+		defer func() {
+			// anytime we flush, we want to release idle connections
+			if idleConns > 0 {
+				connections.open(idleConns)
+				idleConns = 0
+			}
+		}()
 		if size == 0 {
 			return
 		}
@@ -125,11 +133,11 @@ func (wp *WorkerPool) loop() {
 	// prepend work item to start of inflight buffer. Work that needs to be retried is
 	// prepended for prioritization over new work
 	prepend := func(work *Work) {
-		inf := make([]*Work, len(inflight)+1)
-		inf[0] = work
-		copy(inf[1:], inflight)
-		inflight = nil
-		inflight = inf
+		inflight = append([]*Work{work}, inflight...)
+		if idleConns > 0 {
+			connections.open(idleConns)
+			idleConns = 0
+		}
 	}
 
 	do := func(work *Work) {
@@ -178,13 +186,13 @@ func (wp *WorkerPool) loop() {
 				// If input is nil, no more work will be coming so close the connection for good
 				closed.release()
 			} else {
-				// otherwise release it
-				connections.release()
+				// there is no work right now, make the connection idle to prevent busy looping
+				idleConns++
 			}
 		case closed <- struct{}{}:
 			// this case will block until the connections case releases the closed semaphore
 			completed++
-			if completed == wp.MaxConnections {
+			if completed+idleConns == wp.MaxConnections {
 				return
 			}
 		case failed := <-retry:
@@ -201,7 +209,7 @@ func (wp *WorkerPool) loop() {
 				}
 			}()
 			// wait for open connections to finish
-			connections.wait(wp.MaxConnections - completed)
+			connections.wait(wp.MaxConnections - completed - idleConns)
 			// safe to close retry channel now that no connections are open
 			close(retry)
 			// wait to finish collecting all failed requests
@@ -221,7 +229,9 @@ func (wp *WorkerPool) loop() {
 			// reset closed connections
 			closed.wait(completed)
 			completed = 0
-			// reopen connections
+			// reset idle connections
+			idleConns = 0
+			// reopen all connections
 			connections.open(wp.MaxConnections)
 			// collect records to push after resuming
 			// this will block the pool until Resume() is called
