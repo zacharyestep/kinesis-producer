@@ -31,7 +31,7 @@ type Producer struct {
 	failures chan error
 }
 
-func New(config *Config) *Producer {
+func New(config *Config) (*Producer, error) {
 	config.defaults()
 	p := &Producer{
 		Config:  config,
@@ -42,12 +42,10 @@ func New(config *Config) *Producer {
 	}
 	shards, _, err := p.GetShards(nil)
 	if err != nil {
-		// TODO: maybe just log and continue or fallback to default? if ShardRefreshInterval
-		// 			 is set, it may succeed a later time
-		panic(err)
+		return nil, err
 	}
 	p.shardMap = NewShardMap(shards, p.AggregateBatchCount)
-	return p
+	return p, nil
 }
 
 // Put `data` using `partitionKey` asynchronously. This method is thread-safe.
