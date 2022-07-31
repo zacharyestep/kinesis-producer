@@ -221,7 +221,8 @@ func (wp *WorkerPool) loop() {
 			if wp.Verbose {
 				wp.Logger.Info("wait for open connections to finish")
 			}
-			connections.wait(wp.MaxConnections - completed - idleConns)
+			waitConnNumber := wp.MaxConnections - completed - idleConns
+			connections.wait(waitConnNumber)
 			// safe to close retry channel now that no connections are open
 			if wp.Verbose {
 				wp.Logger.Info("safe to close retry channel now that no connections are open")
@@ -273,9 +274,9 @@ func (wp *WorkerPool) loop() {
 			idleConns = 0
 			// reopen all connections
 			if wp.Verbose {
-				wp.Logger.Info("reopen all connections")
+				wp.Logger.Info("reopen connections", {"count": waitConnNumber})
 			}
-			connections.open(wp.MaxConnections)
+			connections.open(waitConnNumber)
 			// collect records to push after resuming
 			if wp.Verbose {
 				wp.Logger.Info("collect records to push after resuming")
