@@ -274,7 +274,7 @@ func (wp *WorkerPool) loop() {
 			idleConns = 0
 			// reopen all connections
 			if wp.Verbose {
-				wp.Logger.Info("reopen connections", {"count": waitConnNumber})
+				wp.Logger.Info("reopen connections", LogValue{"count", waitConnNumber})
 			}
 			connections.open(waitConnNumber)
 			// collect records to push after resuming
