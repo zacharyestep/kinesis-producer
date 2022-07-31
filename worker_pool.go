@@ -74,7 +74,7 @@ func (wp *WorkerPool) Resume(records []*AggregatedRecordRequest) {
 	}
 	wp.unfinished <- records
 	if wp.Verbose {
-		wp.Logger.Info("unpausing"})
+		wp.Logger.Info("unpausing")
 	}
 	<-wp.pause
 }
