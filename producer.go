@@ -226,6 +226,9 @@ func (p *Producer) updateShards(done bool) error {
 		return nil
 	}
 
+	if p.Verbose {
+		p.Logger.Info("waiting for backlog to fully release")
+	}
 	if !done {
 		// if done signal has not been received yet, flush all backlogged puts into the worker
 		// pool and block additional puts
@@ -233,19 +236,35 @@ func (p *Producer) updateShards(done bool) error {
 	}
 
 	// pause and drain the worker pool
+
+	if p.Verbose {
+		p.Logger.Info("pausing worker pool")
+	}
 	pending := p.pool.Pause()
 
+	if p.Verbose {
+		p.Logger.Info("updating shards")
+	}
 	// update the shards and reaggregate pending records
 	records, err := p.shardMap.UpdateShards(shards, pending)
 
+	if p.Verbose {
+		p.Logger.Info("resuming worker pool")
+	}
 	// resume the worker pool
 	p.pool.Resume(records)
 
+	if p.Verbose {
+		p.Logger.Info("waiting for backlog to reopen")
+	}
 	if !done {
 		// if done signal has not been received yet, re-open the backlog to accept more Puts
 		p.backlog.open(p.BacklogCount)
 	}
 
+	if p.Verbose {
+		p.Logger.Info("done updating shards, returning")
+	}
 	return err
 }
 
