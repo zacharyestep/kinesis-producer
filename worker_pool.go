@@ -69,7 +69,13 @@ func (wp *WorkerPool) Pause() []*AggregatedRecordRequest {
 }
 
 func (wp *WorkerPool) Resume(records []*AggregatedRecordRequest) {
+	if wp.Verbose {
+		wp.Logger.Info("resuming", LogValue{"records", len(records)})
+	}
 	wp.unfinished <- records
+	if wp.Verbose {
+		wp.Logger.Info("unpausing"})
+	}
 	<-wp.pause
 }
 
@@ -200,6 +206,9 @@ func (wp *WorkerPool) loop() {
 			prepend(failed)
 		case <-pause:
 			// collect failed records that need retry from open connections
+			if wp.Verbose {
+				wp.Logger.Info("main loop pausing")
+			}
 			var wg sync.WaitGroup
 			wg.Add(1)
 			go func() {
@@ -209,39 +218,82 @@ func (wp *WorkerPool) loop() {
 				}
 			}()
 			// wait for open connections to finish
+			if wp.Verbose {
+				wp.Logger.Info("wait for open connections to finish")
+			}
 			connections.wait(wp.MaxConnections - completed - idleConns)
 			// safe to close retry channel now that no connections are open
+			if wp.Verbose {
+				wp.Logger.Info("safe to close retry channel now that no connections are open")
+			}
+
 			close(retry)
 			// wait to finish collecting all failed requests
+			if wp.Verbose {
+				wp.Logger.Info("wait to finish collecting all failed requests")
+			}
+
 			wg.Wait()
 			// flush out anything remaining in the buffer
+			if wp.Verbose {
+				wp.Logger.Info("flush out anything remaining in the buffer")
+			}
+
 			flushBuf("pause")
 			// capture the inflight requests that did not get finished
+			if wp.Verbose {
+				wp.Logger.Info("capture the inflight requests that did not get finished")
+			}
+
 			var drained []*AggregatedRecordRequest
 			for _, work := range inflight {
 				drained = append(drained, work.records...)
 			}
 			// reset state
+			if wp.Verbose {
+				wp.Logger.Info("reset state")
+			}
 			retry = make(chan *Work)
 			inflight = nil
 			// send the drained records
+			if wp.Verbose {
+				wp.Logger.Info("send the drained records")
+			}
 			wp.unfinished <- drained
 			// reset closed connections
+			if wp.Verbose {
+				wp.Logger.Info("reset closed connections")
+			}
 			closed.wait(completed)
 			completed = 0
 			// reset idle connections
+			if wp.Verbose {
+				wp.Logger.Info("reset idle connections")
+			}
 			idleConns = 0
 			// reopen all connections
+			if wp.Verbose {
+				wp.Logger.Info("reopen all connections")
+			}
 			connections.open(wp.MaxConnections)
 			// collect records to push after resuming
+			if wp.Verbose {
+				wp.Logger.Info("collect records to push after resuming")
+			}
 			// this will block the pool until Resume() is called
 			records := <-wp.unfinished
+			if wp.Verbose {
+				wp.Logger.Info("push records")
+			}
 			for _, record := range records {
 				push(record)
 			}
 			if input == nil {
 				// if the pool was paused after Close(), then we want to flush any remaining buffer
 				flushBuf("drain")
+			}
+			if wp.Verbose {
+				wp.Logger.Info("sending signal to pause channel")
 			}
 			wp.pause <- struct{}{}
 		}
