@@ -2,13 +2,14 @@ package producer
 
 import (
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"strconv"
 	"testing"
 
-	"github.com/achunariov/kinesis-producer/deaggregation"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
+
 	k "github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/stretchr/testify/require"
+	"github.com/zacharyestep/kinesis-producer/deaggregation"
 )
 
 func TestSizeAndCount(t *testing.T) {

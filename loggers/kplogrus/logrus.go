@@ -1,8 +1,8 @@
 package kplogrus
 
 import (
-	producer "github.com/achunariov/kinesis-producer"
 	"github.com/sirupsen/logrus"
+	producer "github.com/zacharyestep/kinesis-producer"
 )
 
 // Logger implements a logurs.Logger logger for kinesis-producer

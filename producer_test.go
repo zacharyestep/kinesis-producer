@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	k "github.com/aws/aws-sdk-go-v2/service/kinesis"
@@ -70,9 +71,10 @@ var testCases = []testCase{
 						FailedRecordCount: aws.Int32(0),
 					},
 				},
-			}},
+			},
+		},
 		map[int][]string{
-			0: []string{"hello"},
+			0: {"hello"},
 		},
 	},
 	{
@@ -94,10 +96,11 @@ var testCases = []testCase{
 						FailedRecordCount: aws.Int32(0),
 					},
 				},
-			}},
+			},
+		},
 		map[int][]string{
-			0: []string{"hello"},
-			1: []string{"world"},
+			0: {"hello"},
+			1: {"world"},
 		},
 	},
 	{
@@ -123,10 +126,11 @@ var testCases = []testCase{
 						FailedRecordCount: aws.Int32(0),
 					},
 				},
-			}},
+			},
+		},
 		map[int][]string{
-			0: []string{"hello", "world"},
-			1: []string{"world"},
+			0: {"hello", "world"},
+			1: {"world"},
 		},
 	},
 	{
@@ -148,7 +152,8 @@ var testCases = []testCase{
 						FailedRecordCount: aws.Int32(0),
 					},
 				},
-			}},
+			},
+		},
 		map[int][]string{
 			0: genBulk(10, "foo"),
 			1: genBulk(10, "foo"),
@@ -161,7 +166,7 @@ func TestProducer(t *testing.T) {
 		test.config.StreamName = test.name
 		test.config.MaxConnections = 1
 		test.config.Client = test.putter
-		p := New(test.config)
+		p, _ := New(test.config)
 		failures := p.NotifyFailures()
 		var ewg sync.WaitGroup
 		ewg.Add(1)
@@ -197,7 +202,7 @@ func TestProducer(t *testing.T) {
 
 func TestNotify(t *testing.T) {
 	kError := errors.New("ResourceNotFoundException: Stream foo under account X not found")
-	p := New(&Config{
+	p, _ := New(&Config{
 		StreamName:          "foo",
 		MaxConnections:      1,
 		BatchCount:          1,
@@ -562,7 +567,7 @@ func BenchmarkProducer(b *testing.B) {
 			}
 			tc.config.Logger = &NopLogger{}
 
-			p := New(tc.config)
+			p, _ := New(tc.config)
 
 			failures := p.NotifyFailures()
 			failuresDone := make(chan struct{})

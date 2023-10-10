@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/achunariov/kinesis-producer"
+	"github.com/zacharyestep/kinesis-producer"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
@@ -72,7 +72,7 @@ package main
 import (
 	"time"
 
-	"github.com/achunariov/kinesis-producer"
+	"github.com/zacharyestep/kinesis-producer"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
@@ -131,7 +131,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/achunariov/kinesis-producer"
+	"github.com/zacharyestep/kinesis-producer"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
@@ -223,8 +223,8 @@ customLogger := &CustomLogger{}
 ```go
 import (
 	"github.com/sirupsen/logrus"
-	producer "github.com/achunariov/kinesis-producer"
-	"github.com/achunariov/kinesis-producer/loggers"
+	producer "github.com/zacharyestep/kinesis-producer"
+	"github.com/zacharyestep/kinesis-producer/loggers"
 )
 
 log := logrus.New()
@@ -246,12 +246,12 @@ kinesis-producer ships with three logger implementations.
 ### License
 MIT
 
-[godoc-url]: https://godoc.org/github.com/achunariov/kinesis-producer
+[godoc-url]: https://godoc.org/github.com/zacharyestep/kinesis-producer
 [godoc-img]: https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square
 [kpl-url]: https://github.com/awslabs/amazon-kinesis-producer
 [de-aggregation]: http://docs.aws.amazon.com/kinesis/latest/dev/kinesis-kpl-consumer-deaggregation.html
 [kpl-aggregation]: http://docs.aws.amazon.com/kinesis/latest/dev/kinesis-producer-adv-aggregation.html
-[aggregation-format-url]: https://github.com/achunariov/kinesis-producer/blob/master/aggregation-format.md
+[aggregation-format-url]: https://github.com/zacharyestep/kinesis-producer/blob/master/aggregation-format.md
 [license-image]: https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square
 [license-url]: LICENSE
 

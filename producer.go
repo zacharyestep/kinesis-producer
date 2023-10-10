@@ -67,7 +67,7 @@ func (p *Producer) PutUserRecord(userRecord UserRecord) error {
 	case p.backlog <- struct{}{}:
 	}
 
-	var release = true
+	release := true
 	defer func() {
 		if release {
 			p.backlog.release()

@@ -314,7 +314,6 @@ func (wp *WorkerPool) send(work *Work) *Work {
 		StreamName: &wp.StreamName,
 		Records:    kinesisRecords,
 	})
-
 	if err != nil {
 		wp.Logger.Error("send", err)
 		for _, r := range work.records {

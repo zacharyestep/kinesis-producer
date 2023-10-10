@@ -210,11 +210,12 @@ func (m *ShardMap) Shards() []types.Shard {
 // Shards are not updated if an error occurs during redistribution.
 // TODO: Can we optimize this?
 // TODO: How to handle shard splitting? If a shard splits but we don't remap before sending
-//			 records to the new shards, once we do update our mapping, user records may end up
-//			 in a new shard and we would lose the shard ordering. Consumer can probably figure
-//			 it out since we retain original partition keys (but not explicit hash keys)
-//			 Shard merging should not be an issue since records from both shards should fall
-//			 into the merged hash key range.
+//
+//	records to the new shards, once we do update our mapping, user records may end up
+//	in a new shard and we would lose the shard ordering. Consumer can probably figure
+//	it out since we retain original partition keys (but not explicit hash keys)
+//	Shard merging should not be an issue since records from both shards should fall
+//	into the merged hash key range.
 func (m *ShardMap) UpdateShards(shards []types.Shard, pendingRecords []*AggregatedRecordRequest) ([]*AggregatedRecordRequest, error) {
 	m.Lock()
 	defer m.Unlock()

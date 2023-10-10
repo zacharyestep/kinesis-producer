@@ -4,14 +4,12 @@ import (
 	"crypto/md5"
 	"sync"
 
-	"github.com/achunariov/kinesis-producer/pb"
 	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"github.com/golang/protobuf/proto"
+	"github.com/zacharyestep/kinesis-producer/pb"
 )
 
-var (
-	magicNumber = []byte{0xF3, 0x89, 0x9A, 0xC2}
-)
+var magicNumber = []byte{0xF3, 0x89, 0x9A, 0xC2}
 
 // Contains the AWS Kinesis PutRecordsRequestEntry and UserRecords that are aggregated into
 // the request. UserRecords are provided for more control over failure notifications

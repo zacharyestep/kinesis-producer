@@ -15,7 +15,7 @@ import (
 func ExampleSimple() {
 	logger := &StdLogger{log.New(os.Stdout, "", log.LstdFlags)}
 	client := kinesis.NewFromConfig(*aws.NewConfig())
-	pr := New(&Config{
+	pr, _ := New(&Config{
 		StreamName:   "test",
 		BacklogCount: 2000,
 		Client:       client,
@@ -49,7 +49,7 @@ func ExampleSimple() {
 func ExampleShardMap() {
 	logger := &StdLogger{log.New(os.Stdout, "", log.LstdFlags)}
 	client := kinesis.NewFromConfig(*aws.NewConfig())
-	pr := New(&Config{
+	pr, _ := New(&Config{
 		StreamName:           "test",
 		BacklogCount:         2000,
 		Client:               client,
@@ -114,7 +114,7 @@ func newMyExampleUserRecord(key, val string) (*myExampleUserRecord, error) {
 func ExampleUserRecord() {
 	logger := &StdLogger{log.New(os.Stdout, "", log.LstdFlags)}
 	client := kinesis.NewFromConfig(*aws.NewConfig())
-	pr := New(&Config{
+	pr, _ := New(&Config{
 		StreamName:           "test",
 		BacklogCount:         2000,
 		Client:               client,
